@@ -1,0 +1,691 @@
+{
+  "info": {
+    "name": "TravelHub - User Services",
+    "description": "Colección completa de endpoints del microservicio user-services.\n\n**Flujo recomendado:**\n1. Health Check\n2. Register\n3. Login (guarda tokens automáticamente)\n4. Get Me\n5. Update Me\n6. MFA Setup\n7. MFA Verify\n8. Login con MFA\n9. Refresh Token\n\n**Casos de error:** carpeta separada con todos los escenarios de error.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Service healthy', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('healthy');",
+                  "  pm.expect(json.service).to.eql('user-services');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth - Happy Path",
+      "item": [
+        {
+          "name": "1. Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"username\": \"viajero01\",\n  \"nombre\": \"Carlos Viajero\",\n  \"password\": \"{{user_password}}\",\n  \"telefono\": \"+57 300 1234567\",\n  \"pais\": \"CO\",\n  \"idioma\": \"es\",\n  \"moneda_preferida\": \"COP\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Response tiene campos esperados', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('id');",
+                  "  pm.expect(json).to.have.property('email');",
+                  "  pm.expect(json).to.have.property('username');",
+                  "  pm.expect(json).to.have.property('rol');",
+                  "  pm.expect(json.rol).to.eql('viajero');",
+                  "  pm.expect(json.mfa_activo).to.eql(false);",
+                  "});",
+                  "pm.test('No expone hashed_password ni mfa_secret', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.not.have.property('hashed_password');",
+                  "  pm.expect(json).to.not.have.property('mfa_secret');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response tiene tokens', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('access_token');",
+                  "  pm.expect(json).to.have.property('refresh_token');",
+                  "  pm.expect(json.token_type).to.eql('bearer');",
+                  "  pm.expect(json.expires_in).to.eql(900);",
+                  "});",
+                  "// Guardar tokens automáticamente",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('access_token', json.access_token);",
+                  "pm.environment.set('refresh_token', json.refresh_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Get Me (perfil)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response tiene perfil completo', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('id');",
+                  "  pm.expect(json).to.have.property('email');",
+                  "  pm.expect(json).to.have.property('nombre');",
+                  "  pm.expect(json).to.have.property('rol');",
+                  "  pm.expect(json).to.not.have.property('hashed_password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Update Me (perfil)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Carlos Actualizado\",\n  \"telefono\": \"+57 310 9876543\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Actualiza nombre, password y/o telefono. Todos los campos son opcionales."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nombre actualizado', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.nombre).to.eql('Carlos Actualizado');",
+                  "  pm.expect(json.telefono).to.eql('+57 310 9876543');",
+                  "});",
+                  "pm.test('No expone hashed_password', () => {",
+                  "  pm.expect(pm.response.json()).to.not.have.property('hashed_password');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. MFA Setup",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/mfa/setup",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "mfa", "setup"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response tiene secret y qr_uri', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.secret).to.have.lengthOf(32);",
+                  "  pm.expect(json.qr_uri).to.include('otpauth://totp/TravelHub:');",
+                  "});",
+                  "// Guardar secret para usar en verify",
+                  "pm.environment.set('mfa_secret', pm.response.json().secret);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. MFA Verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"totp_code\": \"REPLACE_WITH_TOTP_CODE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/mfa/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "mfa", "verify"]
+            },
+            "description": "Genera el código TOTP usando el secret de MFA Setup.\nPuedes usar: python3 -c \"import pyotp; print(pyotp.TOTP('TU_SECRET').now())\"\nO cualquier app authenticator (Google Authenticator, Authy, etc.) escaneando el QR."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('MFA activado', () => {",
+                  "  pm.expect(pm.response.json().message).to.eql('MFA activado exitosamente');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Login con MFA",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"totp_code\": \"REPLACE_WITH_TOTP_CODE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Login después de activar MFA. Requiere totp_code válido."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Response tiene tokens', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('access_token');",
+                  "  pm.expect(json).to.have.property('refresh_token');",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('access_token', json.access_token);",
+                  "pm.environment.set('refresh_token', json.refresh_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Nuevos tokens generados', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('access_token');",
+                  "  pm.expect(json).to.have.property('refresh_token');",
+                  "  pm.expect(json.token_type).to.eql('bearer');",
+                  "});",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('access_token', json.access_token);",
+                  "pm.environment.set('refresh_token', json.refresh_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth - Errores",
+      "item": [
+        {
+          "name": "Register - Email duplicado (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"username\": \"otrousername\",\n  \"nombre\": \"Duplicado\",\n  \"password\": \"securepass123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('Mensaje de duplicado', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('Ya existe');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register - Validación (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"username\": \"ab\",\n  \"nombre\": \"\",\n  \"password\": \"short\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422 Validation Error', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - Credenciales inválidas (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Mensaje credenciales inválidas', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('inválidas');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login - MFA requerido (428)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Ejecutar después de activar MFA. Login sin totp_code debe retornar 428."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 428 MFA Required', () => pm.response.to.have.status(428));",
+                  "pm.test('Mensaje MFA requerido', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('MFA requerido');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Me - Sin token (401)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Sin Auth\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Token no proporcionado', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('Token no proporcionado');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Me - Validacion (422)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"short\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            },
+            "description": "Password menor a 8 caracteres debe retornar 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Me - Sin token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Token no proporcionado', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('Token no proporcionado');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Me - Token inválido (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer token.invalido.aqui" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh - Con access token (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{access_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            },
+            "description": "Enviar un access_token donde se espera refresh_token debe fallar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));",
+                  "pm.test('Mensaje type mismatch', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('refresh token');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh - Token inválido (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"token.invalido.aqui\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401', () => pm.response.to.have.status(401));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "MFA Verify - Sin setup previo (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"totp_code\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/mfa/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "mfa", "verify"]
+            },
+            "description": "Ejecutar con un usuario que NO ha hecho MFA setup."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('MFA no configurado', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('MFA no configurado');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

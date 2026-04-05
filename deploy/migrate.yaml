@@ -1,0 +1,9 @@
+steps:
+  - name: 'gcr.io/$PROJECT_ID/user-services:latest'
+    entrypoint: 'alembic'
+    args: ['upgrade', 'head']
+    env:
+      - 'DATABASE_URL_SYNC=postgresql+psycopg2://travelhub_app:lALk8rAOj1TSltRQzGavZdBCrSu67ZJg@10.100.0.3:5432/travelhub'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

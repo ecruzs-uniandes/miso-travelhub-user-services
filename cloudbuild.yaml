@@ -1,0 +1,51 @@
+steps:
+  # 1. Build de la imagen Docker
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--target'
+      - 'production'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/user-services:latest'
+      - '.'
+
+  # 2. Push de la imagen a Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/user-services:latest'
+
+  # 3. Deploy a Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'user-services'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/user-services:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--port'
+      - '8000'
+      - '--allow-unauthenticated'
+      - '--vpc-connector'
+      - 'travelhub-connector'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '10'
+      - '--update-env-vars'
+      - 'DATABASE_URL=postgresql+asyncpg://travelhub_app:lALk8rAOj1TSltRQzGavZdBCrSu67ZJg@10.100.0.3:5432/travelhub,DATABASE_URL_SYNC=postgresql+psycopg2://travelhub_app:lALk8rAOj1TSltRQzGavZdBCrSu67ZJg@10.100.0.3:5432/travelhub,JWT_ISSUER=https://auth.travelhub.app,JWT_AUDIENCE=travelhub-api,JWT_ALGORITHM=RS256,JWT_ACCESS_TTL=900,JWT_REFRESH_TTL=604800,ENVIRONMENT=production,DEBUG=false'
+
+images:
+  - 'gcr.io/$PROJECT_ID/user-services:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
