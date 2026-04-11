@@ -68,9 +68,9 @@ jobs:
       - name: Lint with ruff
         run: ruff check app/ tests/
 
-  # ── Deploy a DEV (automático en push a develop o feature/*) ──
-  build-and-deploy-dev:
-    name: Build & Deploy to Dev
+  # ── DEV: deploy directo a Cloud Run ──
+  deploy-dev:
+    name: Deploy to Dev (Cloud Run)
     runs-on: ubuntu-latest
     needs: [tests, lint]
     if: >
@@ -102,18 +102,33 @@ jobs:
           docker push ${{ env.DEV_IMAGE }}:${{ github.sha }}
           docker push ${{ env.DEV_IMAGE }}:latest
 
-      - name: Create Cloud Deploy release (dev)
+      - name: Deploy to Cloud Run (dev)
         run: |
-          gcloud deploy releases create dev-${{ github.sha }} \
+          gcloud run deploy user-services-dev \
             --project=${{ env.DEV_PROJECT_ID }} \
             --region=${{ env.REGION }} \
-            --delivery-pipeline=${{ env.SERVICE_NAME }} \
-            --images=user-services=${{ env.DEV_IMAGE }}:${{ github.sha }} \
-            --skaffold-file=skaffold.yaml
+            --image=${{ env.DEV_IMAGE }}:${{ github.sha }} \
+            --port=8000 \
+            --allow-unauthenticated \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=2 \
+            --concurrency=80 \
+            --timeout=300 \
+            --set-env-vars="ENVIRONMENT=dev" \
+            --quiet
 
-  # ── Deploy a PROD (solo push a main, con aprobación en Cloud Deploy) ──
-  build-and-deploy-prod:
-    name: Build & Deploy to Prod
+      - name: Show service URL
+        run: |
+          gcloud run services describe user-services-dev \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --format="value(status.url)"
+
+  # ── PROD: Cloud Deploy con canary progresivo ──
+  deploy-prod:
+    name: Deploy to Prod (Cloud Deploy Canary)
     runs-on: ubuntu-latest
     needs: [tests, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -143,16 +158,16 @@ jobs:
           docker push ${{ env.PROD_IMAGE }}:${{ github.sha }}
           docker push ${{ env.PROD_IMAGE }}:latest
 
-      - name: Create Cloud Deploy release (prod)
+      - name: Create Cloud Deploy release (canary)
         run: |
-          gcloud deploy releases create prod-${{ github.sha }} \
+          gcloud deploy releases create prod-${GITHUB_SHA::8}-$(date +%Y%m%d%H%M%S) \
             --project=${{ env.PROD_PROJECT_ID }} \
             --region=${{ env.REGION }} \
             --delivery-pipeline=${{ env.SERVICE_NAME }} \
             --images=user-services=${{ env.PROD_IMAGE }}:${{ github.sha }} \
             --skaffold-file=skaffold.yaml
 
-  # ── Solo validar build en PRs ──
+  # ── PR: solo validar build ──
   docker-build:
     name: Docker Build (PR check)
     runs-on: ubuntu-latest

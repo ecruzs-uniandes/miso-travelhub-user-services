@@ -2,16 +2,25 @@ apiVersion: deploy.cloud.google.com/v1
 kind: DeliveryPipeline
 metadata:
   name: user-services
-description: Pipeline de despliegue para user-services
+description: Production delivery pipeline with canary strategy
 serialPipeline:
   stages:
-    - targetId: dev
-      profiles: [dev]
+    - targetId: prod
+      profiles: [prod]
+      strategy:
+        canary:
+          runtimeConfig:
+            cloudRun:
+              automaticTrafficControl: true
+          canaryDeployment:
+            percentages: [10, 50]
+            verify: true
 ---
 apiVersion: deploy.cloud.google.com/v1
 kind: Target
 metadata:
-  name: dev
-description: Ambiente de desarrollo
+  name: prod
+description: Production environment
+requireApproval: true
 run:
-  location: projects/gen-lang-client-0930444414/locations/us-central1
+  location: projects/<PROJECT_ID>/locations/us-central1

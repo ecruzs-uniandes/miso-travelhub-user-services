@@ -5,13 +5,17 @@ metadata:
   labels:
     cloud.googleapis.com/location: us-central1
   annotations:
-    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress: internal-and-cloud-load-balancing
+    run.googleapis.com/launch-stage: GA
 spec:
   template:
     metadata:
       annotations:
         autoscaling.knative.dev/minScale: "1"
         autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/startup-cpu-boost: "true"
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/execution-environment: gen2
     spec:
       containerConcurrency: 80
       timeoutSeconds: 300
@@ -32,9 +36,12 @@ spec:
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 5
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
             periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
