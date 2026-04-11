@@ -104,7 +104,7 @@ jobs:
 
       - name: Deploy to Cloud Run (dev)
         run: |
-          gcloud run services update user-services-dev \
+          gcloud run services update user-services \
             --project=${{ env.DEV_PROJECT_ID }} \
             --region=${{ env.REGION }} \
             --image=${{ env.DEV_IMAGE }}:${{ github.sha }} \
@@ -112,7 +112,7 @@ jobs:
 
       - name: Show service URL
         run: |
-          gcloud run services describe user-services-dev \
+          gcloud run services describe user-services \
             --project=${{ env.DEV_PROJECT_ID }} \
             --region=${{ env.REGION }} \
             --format="value(status.url)"
