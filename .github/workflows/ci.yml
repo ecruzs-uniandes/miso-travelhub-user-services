@@ -111,7 +111,7 @@ jobs:
             --port=8000 \
             --allow-unauthenticated \
             --set-env-vars="\
-              ENVIRONMENT=dev,\
+              ENVIRONMENT=production,\
               DEBUG=true,\
               JWT_ALGORITHM=RS256,\
               JWT_ISSUER=https://auth.travelhub.app,\
@@ -125,7 +125,8 @@ jobs:
               RATE_LIMIT_WINDOW_SECONDS=60" \
             --set-secrets="\
               DATABASE_URL=DATABASE_URL:latest,\
-              DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest" \
+              DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,
+              RSA_PRIVATE_KEY_B64=RSA_PRIVATE_KEY_B64:latest" \
             --quiet
 
       - name: Show service URL
