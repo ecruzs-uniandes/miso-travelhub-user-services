@@ -1,12 +1,12 @@
 """Tests para login de usuarios (W08)."""
 
-import pytest
-import pytest_asyncio
 from datetime import datetime, timedelta, timezone
 
-from app.models.user import User
-from app.utils.security import hash_password, generate_totp_secret
+import pytest
+import pytest_asyncio
 
+from app.models.user import User
+from app.utils.security import generate_totp_secret, hash_password
 
 REGISTER_URL = "/api/v1/auth/register"
 LOGIN_URL = "/api/v1/auth/login"
@@ -51,7 +51,9 @@ async def test_login_valid_credentials_returns_200(async_client, test_user):
 
 
 @pytest.mark.asyncio
-async def test_login_successful_resets_failed_attempts(async_client, test_user, db_session):
+async def test_login_successful_resets_failed_attempts(
+    async_client, test_user, db_session
+):
     # Fail once
     await async_client.post(
         LOGIN_URL,
@@ -125,7 +127,9 @@ async def test_login_locked_account_returns_423(async_client, test_user, db_sess
 
 
 @pytest.mark.asyncio
-async def test_login_lockout_checked_before_password(async_client, test_user, db_session):
+async def test_login_lockout_checked_before_password(
+    async_client, test_user, db_session
+):
     test_user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
     test_user.failed_login_attempts = 5
     await db_session.commit()
@@ -153,7 +157,9 @@ async def test_login_inactive_user_returns_401(async_client, test_user, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_login_mfa_active_no_code_returns_428(async_client, test_user, db_session):
+async def test_login_mfa_active_no_code_returns_428(
+    async_client, test_user, db_session
+):
     test_user.mfa_activo = True
     test_user.mfa_secret = generate_totp_secret()
     await db_session.commit()
@@ -167,7 +173,9 @@ async def test_login_mfa_active_no_code_returns_428(async_client, test_user, db_
 
 
 @pytest.mark.asyncio
-async def test_login_mfa_active_invalid_code_returns_401(async_client, test_user, db_session):
+async def test_login_mfa_active_invalid_code_returns_401(
+    async_client, test_user, db_session
+):
     test_user.mfa_activo = True
     test_user.mfa_secret = generate_totp_secret()
     await db_session.commit()
@@ -184,7 +192,9 @@ async def test_login_mfa_active_invalid_code_returns_401(async_client, test_user
 
 
 @pytest.mark.asyncio
-async def test_login_mfa_active_valid_code_returns_200(async_client, test_user, db_session):
+async def test_login_mfa_active_valid_code_returns_200(
+    async_client, test_user, db_session
+):
     import pyotp
 
     secret = generate_totp_secret()

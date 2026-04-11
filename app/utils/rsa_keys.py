@@ -19,7 +19,9 @@ def _load_or_generate_key():
     key_b64 = os.getenv("RSA_PRIVATE_KEY_B64")
     if key_b64:
         pem_bytes = base64.b64decode(key_b64)
-        _private_key = load_pem_private_key(pem_bytes, password=None, backend=default_backend())
+        _private_key = load_pem_private_key(
+            pem_bytes, password=None, backend=default_backend()
+        )
         logger.info("RSA private key loaded from RSA_PRIVATE_KEY_B64")
     else:
         _private_key = rsa.generate_private_key(

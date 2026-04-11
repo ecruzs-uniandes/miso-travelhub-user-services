@@ -3,17 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth_chain import get_current_user_id
-from app.schemas.user import (
-    MFASetupResponse,
-    MFAVerifyRequest,
-    MessageResponse,
-    RefreshTokenRequest,
-    TokenResponse,
-    UserLoginRequest,
-    UserRegisterRequest,
-    UserResponse,
-    UserUpdateRequest,
-)
+from app.schemas.user import (MessageResponse, MFASetupResponse,
+                              MFAVerifyRequest, RefreshTokenRequest,
+                              TokenResponse, UserLoginRequest,
+                              UserRegisterRequest, UserResponse,
+                              UserUpdateRequest)
 from app.services import auth_service
 
 router = APIRouter()

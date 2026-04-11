@@ -49,7 +49,9 @@ async def test_register_does_not_expose_password(async_client):
 
 async def test_register_stores_hashed_password(async_client, db_session):
     await async_client.post(REGISTER_URL, json=VALID_USER)
-    result = await db_session.execute(select(User).where(User.email == VALID_USER["email"]))
+    result = await db_session.execute(
+        select(User).where(User.email == VALID_USER["email"])
+    )
     user = result.scalar_one()
     assert user.hashed_password != VALID_USER["password"]
     assert user.hashed_password.startswith("$2b$")
@@ -95,13 +97,18 @@ async def test_register_duplicate_username_returns_409(async_client):
 # --- Errores: validación ---
 
 
-@pytest.mark.parametrize("field,value,expected_status", [
-    ("password", "short", 422),
-    ("username", "ab", 422),
-    ("email", "not-an-email", 422),
-    ("nombre", "", 422),
-])
-async def test_register_invalid_field_returns_422(async_client, field, value, expected_status):
+@pytest.mark.parametrize(
+    "field,value,expected_status",
+    [
+        ("password", "short", 422),
+        ("username", "ab", 422),
+        ("email", "not-an-email", 422),
+        ("nombre", "", 422),
+    ],
+)
+async def test_register_invalid_field_returns_422(
+    async_client, field, value, expected_status
+):
     payload = VALID_USER.copy()
     payload[field] = value
     response = await async_client.post(REGISTER_URL, json=payload)

@@ -1,13 +1,7 @@
-from app.schemas.user import (
-    MFASetupResponse,
-    MFAVerifyRequest,
-    MessageResponse,
-    RefreshTokenRequest,
-    TokenResponse,
-    UserLoginRequest,
-    UserRegisterRequest,
-    UserResponse,
-)
+from app.schemas.user import (MessageResponse, MFASetupResponse,
+                              MFAVerifyRequest, RefreshTokenRequest,
+                              TokenResponse, UserLoginRequest,
+                              UserRegisterRequest, UserResponse)
 
 __all__ = [
     "UserRegisterRequest",

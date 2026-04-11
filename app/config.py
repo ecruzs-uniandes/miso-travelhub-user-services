@@ -2,8 +2,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "postgresql+asyncpg://travelhub:travelhub_dev@localhost:5432/travelhub_users"
-    DATABASE_URL_SYNC: str = "postgresql+psycopg2://travelhub:travelhub_dev@localhost:5432/travelhub_users"
+    DATABASE_URL: str = (
+        "postgresql+asyncpg://travelhub:travelhub_dev@localhost:5432/travelhub_users"
+    )
+    DATABASE_URL_SYNC: str = (
+        "postgresql+psycopg2://travelhub:travelhub_dev@localhost:5432/travelhub_users"
+    )
     JWT_SECRET_KEY: str = "dev-secret-key-change-in-production"
     JWT_ALGORITHM: str = "RS256"
     JWT_ISSUER: str = "https://auth.travelhub.app"

@@ -19,22 +19,28 @@ def _get_private_pem() -> bytes:
 
 
 def _get_public_pem() -> bytes:
-    return get_private_key().public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    return (
+        get_private_key()
+        .public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
     )
 
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(seconds=settings.JWT_ACCESS_TTL)
-    to_encode.update({
-        "type": "access",
-        "iss": settings.JWT_ISSUER,
-        "aud": settings.JWT_AUDIENCE,
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-    })
+    to_encode.update(
+        {
+            "type": "access",
+            "iss": settings.JWT_ISSUER,
+            "aud": settings.JWT_AUDIENCE,
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+        }
+    )
     return jwt.encode(
         to_encode,
         _get_private_pem(),
@@ -46,13 +52,15 @@ def create_access_token(data: dict) -> str:
 def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(seconds=settings.JWT_REFRESH_TTL)
-    to_encode.update({
-        "type": "refresh",
-        "iss": settings.JWT_ISSUER,
-        "aud": settings.JWT_AUDIENCE,
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-    })
+    to_encode.update(
+        {
+            "type": "refresh",
+            "iss": settings.JWT_ISSUER,
+            "aud": settings.JWT_AUDIENCE,
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+        }
+    )
     return jwt.encode(
         to_encode,
         _get_private_pem(),
