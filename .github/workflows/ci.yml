@@ -104,19 +104,10 @@ jobs:
 
       - name: Deploy to Cloud Run (dev)
         run: |
-          gcloud run deploy user-services-dev \
+          gcloud run services update user-services-dev \
             --project=${{ env.DEV_PROJECT_ID }} \
             --region=${{ env.REGION }} \
             --image=${{ env.DEV_IMAGE }}:${{ github.sha }} \
-            --port=8000 \
-            --allow-unauthenticated \
-            --memory=512Mi \
-            --cpu=1 \
-            --min-instances=0 \
-            --max-instances=2 \
-            --concurrency=80 \
-            --timeout=300 \
-            --set-env-vars="ENVIRONMENT=dev" \
             --quiet
 
       - name: Show service URL
