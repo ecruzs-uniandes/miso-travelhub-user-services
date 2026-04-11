@@ -3,7 +3,7 @@
 ## Comandos
 
 ```bash
-# Dev
+# Dev local
 docker-compose up -d                # PostgreSQL + servicio
 docker-compose up -d db             # Solo BD (para uvicorn manual)
 uvicorn app.main:app --reload --port 8000
@@ -19,14 +19,32 @@ alembic revision --autogenerate -m "descripción"
 alembic upgrade head
 alembic downgrade -1
 
-# Lint
-black app/ tests/ && isort app/ tests/
+# Lint (debe pasar antes del push — CI lo valida)
+isort app/ tests/ && black app/ tests/
 ruff check app/ tests/
-mypy app/
 
 # Docker build
-docker build --target production -t gcr.io/<PROJECT_ID>/user-services:latest .
+docker build --target production -t user-services:latest .
 ```
+
+## CI/CD
+
+Pipeline en `.github/workflows/ci.yml`. Se ejecuta automáticamente en cada push.
+
+| Rama | Acción |
+|------|--------|
+| `feature/*`, `develop` | Tests + Lint + Build + Deploy a **DEV** (Cloud Run directo) |
+| `main` | Tests + Lint + Build + **Cloud Deploy canary** a PROD (10%→50%→100%, requiere aprobación) |
+| PR a `main`/`develop` | Tests + Lint + Docker Build (sin deploy) |
+
+### Variables de entorno en CI/CD
+- **No sensibles** (JWT config, rate limits, etc.): definidas en `ci.yml` (dev) y `k8s/service-prod.yaml` (prod)
+- **Secrets** (`DATABASE_URL`, `DATABASE_URL_SYNC`): GCP Secret Manager, inyectados via `--set-secrets`
+- **Guía de setup GCP**: `docs/gcp-setup.md`
+
+### Proyectos GCP
+- **DEV**: `gen-lang-client-0930444414` (Cloud Run directo, deploy automático)
+- **PROD**: configurado via secret `GCP_PROJECT_ID` (Cloud Deploy con canary + aprobación manual)
 
 ## Stack
 
@@ -55,6 +73,14 @@ tests/
 ├── test_auth_chain.py   # AH008
 ├── test_mfa.py          # MFA
 └── test_health.py
+.github/workflows/
+└── ci.yml               # Pipeline CI/CD (tests, lint, deploy dev/prod)
+clouddeploy.yaml         # Cloud Deploy pipeline (prod canary: 10%→50%→100%)
+skaffold.yaml            # Skaffold config con health verification (prod)
+k8s/
+└── service-prod.yaml    # Manifiesto Cloud Run producción (env vars + secrets)
+docs/
+└── gcp-setup.md         # Guía de configuración GCP por primera vez
 ```
 
 ## Arquitectura — Reglas obligatorias
@@ -119,6 +145,25 @@ tests/
 | 409 | Email/username duplicado |
 | 423 | Cuenta bloqueada |
 | 428 | Código MFA requerido |
+
+## Infraestructura desplegada (DEV)
+
+| Capa | Recurso |
+|------|---------|
+| Cloud Run | `user-services` → `https://user-services-ridyy4wz4q-uc.a.run.app` |
+| API Gateway | `https://travelhub-gateway-1yvtqj7r.uc.gateway.dev` |
+| JWKS | `https://user-services-ridyy4wz4q-uc.a.run.app/.well-known/jwks.json` |
+| Cloud SQL | `travelhub-db` (PostgreSQL 15, IP privada `10.100.0.3`) |
+| VPC | `travelhub-vpc` con 3 subnets + VPC connector `travelhub-connector` |
+| Cloud Armor | `travelhub-security-policy` (WAF + rate limiting + geo-blocking) |
+
+## Integración gateway ↔ backend
+
+- El API Gateway reemplaza el header `Authorization` con un OIDC token de servicio y mueve el JWT original del usuario a `X-Forwarded-Authorization`.
+- El middleware `TokenValidationFilter` lee primero `X-Forwarded-Authorization` y luego `Authorization` como fallback.
+- Las claves RSA se persisten via variable de entorno `RSA_PRIVATE_KEY_B64` (base64 del PEM). Se setea con `gcloud run services update`.
+- Al redesplegar con una nueva clave RSA, hay que redesplegar la config del API Gateway para que refresque el JWKS cacheado.
+- Rutas públicas (no pasan por el chain): `/api/v1/auth/login`, `/api/v1/auth/register`, `/api/v1/auth/refresh`, `/.well-known/jwks.json`, `/health`, `/docs`, `/openapi.json`
 
 ## NUNCA
 

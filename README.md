@@ -17,7 +17,7 @@ Este servicio es el componente central del ecosistema de microservicios de Trave
 7. [Autenticacion y Autorizacion](#autenticacion-y-autorizacion)
 8. [Base de Datos y Migraciones](#base-de-datos-y-migraciones)
 9. [Pruebas](#pruebas)
-10. [Despliegue](#despliegue)
+10. [CI/CD y Despliegue](#despliegue)
 11. [Coleccion Postman](#coleccion-postman)
 
 ---
@@ -117,6 +117,12 @@ user-services/
 │       ├── jwt_handler.py          # Creacion y decodificacion de JWT (RS256)
 │       ├── rsa_keys.py             # Generacion de claves RSA 2048, JWKS
 │       └── security.py             # bcrypt + TOTP helpers
+├── .github/workflows/
+│   └── ci.yml                      # Pipeline CI/CD (tests, lint, deploy)
+├── k8s/
+│   └── service-prod.yaml           # Manifiesto Cloud Run produccion
+├── docs/
+│   └── gcp-setup.md                # Guia de configuracion GCP primera vez
 ├── alembic/
 │   ├── env.py                      # Configuracion de migraciones
 │   └── versions/                   # Archivos de migracion
@@ -131,6 +137,9 @@ user-services/
 ├── postman/
 │   ├── user-services.postman_collection.json
 │   └── user-services.postman_environment.json
+├── clouddeploy.yaml                # Cloud Deploy pipeline (prod canary)
+├── skaffold.yaml                   # Skaffold config con health verification
+├── pyproject.toml                  # Config de black e isort
 ├── alembic.ini
 ├── docker-compose.yml
 ├── Dockerfile
@@ -653,35 +662,41 @@ Ejemplos:
 
 ## Despliegue
 
-### Build de Imagen Docker
+El despliegue se gestiona automaticamente mediante **GitHub Actions**. Cada push ejecuta el pipeline CI/CD correspondiente segun la rama.
+
+> **Primera vez?** Antes de desplegar, es necesario configurar la infraestructura en GCP y los secrets en GitHub. Seguir la guia completa en **[docs/gcp-setup.md](docs/gcp-setup.md)**.
+
+### Flujo por rama
+
+| Rama | Que hace | Ambiente |
+|------|----------|----------|
+| `feature/*`, `develop` | Tests + Lint + Build + Deploy automatico | DEV (Cloud Run directo) |
+| `main` | Tests + Lint + Build + Cloud Deploy canary (10% -> 50% -> 100%) | PROD (requiere aprobacion) |
+| PR a `main`/`develop` | Tests + Lint + Docker Build (sin deploy) | Ninguno |
+
+### DEV
+
+Cada push a `feature/*` o `develop` despliega automaticamente a Cloud Run en el proyecto de desarrollo. Las variables no sensibles se definen en el workflow y los secrets (`DATABASE_URL`, `DATABASE_URL_SYNC`) se inyectan desde GCP Secret Manager.
+
+### PROD
+
+Cada push a `main` crea un release en Cloud Deploy con estrategia **canary**:
+
+1. **Aprobacion manual** en la consola de Cloud Deploy
+2. **10% del trafico** a la nueva version + verificacion de salud
+3. **50% del trafico** + verificacion de salud
+4. **100% del trafico** (stable)
+
+Si la verificacion falla en cualquier fase, el trafico permanece en la version anterior (rollback automatico).
+
+### Build local de imagen Docker
 
 ```bash
 # Imagen de desarrollo (con hot reload)
 docker build --target development -t user-services:dev .
 
 # Imagen de produccion (con 4 workers)
-docker build --target production -t gcr.io/<PROJECT_ID>/user-services:latest .
-```
-
-### Despliegue en GCP Cloud Run
-
-```bash
-# Push a Container Registry
-docker push gcr.io/<PROJECT_ID>/user-services:latest
-
-# Deploy
-gcloud run deploy user-services \
-  --image gcr.io/<PROJECT_ID>/user-services:latest \
-  --platform managed \
-  --region us-central1 \
-  --allow-unauthenticated \
-  --vpc-connector=travelhub-connector \
-  --set-env-vars "DATABASE_URL=<PROD_DB_URL>,JWT_ISSUER=https://auth.travelhub.app,JWT_AUDIENCE=travelhub-api,ENVIRONMENT=production" \
-  --min-instances 1 \
-  --max-instances 10 \
-  --memory 512Mi \
-  --cpu 1 \
-  --port 8000
+docker build --target production -t user-services:latest .
 ```
 
 ---
