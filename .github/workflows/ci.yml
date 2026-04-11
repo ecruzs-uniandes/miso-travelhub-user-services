@@ -1,10 +1,18 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [main, develop, "feature/*"]
   pull_request:
     branches: [main, develop]
+
+env:
+  REGION: us-central1
+  SERVICE_NAME: user-services
+  DEV_PROJECT_ID: gen-lang-client-0930444414
+  DEV_IMAGE: us-central1-docker.pkg.dev/gen-lang-client-0930444414/user-services/user-services
+  PROD_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROD_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/user-services/user-services
 
 jobs:
   tests:
@@ -60,10 +68,96 @@ jobs:
       - name: Lint with ruff
         run: ruff check app/ tests/
 
-  docker-build:
-    name: Docker Build
+  # ── Deploy a DEV (automático en push a develop o feature/*) ──
+  build-and-deploy-dev:
+    name: Build & Deploy to Dev
     runs-on: ubuntu-latest
     needs: [tests, lint]
+    if: >
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/feature/'))
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build --target production \
+            -t ${{ env.DEV_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.DEV_IMAGE }}:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.DEV_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.DEV_IMAGE }}:latest
+
+      - name: Create Cloud Deploy release (dev)
+        run: |
+          gcloud deploy releases create dev-${{ github.sha }} \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --delivery-pipeline=${{ env.SERVICE_NAME }} \
+            --images=user-services=${{ env.DEV_IMAGE }}:${{ github.sha }} \
+            --skaffold-file=skaffold.yaml
+
+  # ── Deploy a PROD (solo push a main, con aprobación en Cloud Deploy) ──
+  build-and-deploy-prod:
+    name: Build & Deploy to Prod
+    runs-on: ubuntu-latest
+    needs: [tests, lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build --target production \
+            -t ${{ env.PROD_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.PROD_IMAGE }}:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.PROD_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.PROD_IMAGE }}:latest
+
+      - name: Create Cloud Deploy release (prod)
+        run: |
+          gcloud deploy releases create prod-${{ github.sha }} \
+            --project=${{ env.PROD_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --delivery-pipeline=${{ env.SERVICE_NAME }} \
+            --images=user-services=${{ env.PROD_IMAGE }}:${{ github.sha }} \
+            --skaffold-file=skaffold.yaml
+
+  # ── Solo validar build en PRs ──
+  docker-build:
+    name: Docker Build (PR check)
+    runs-on: ubuntu-latest
+    needs: [tests, lint]
+    if: github.event_name == 'pull_request'
 
     steps:
       - uses: actions/checkout@v4

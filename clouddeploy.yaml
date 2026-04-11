@@ -1,0 +1,28 @@
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: user-services
+description: Pipeline de despliegue para user-services
+serialPipeline:
+  stages:
+    - targetId: dev
+      profiles: [dev]
+    - targetId: prod
+      profiles: [prod]
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: dev
+description: Ambiente de desarrollo
+run:
+  location: projects/gen-lang-client-0930444414/locations/us-central1
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: prod
+description: Ambiente de produccion
+run:
+  location: projects/<PROJECT_ID>/locations/us-central1
+requireApproval: true

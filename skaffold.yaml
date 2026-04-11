@@ -1,0 +1,15 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: user-services
+profiles:
+  - name: dev
+    manifests:
+      rawYaml:
+        - k8s/service-dev.yaml
+  - name: prod
+    manifests:
+      rawYaml:
+        - k8s/service-prod.yaml
+deploy:
+  cloudrun: {}
