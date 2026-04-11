@@ -26,7 +26,15 @@ async def test_user(db_session):
 
 @pytest_asyncio.fixture
 def auth_headers(test_user):
-    token = create_access_token({"sub": str(test_user.id), "role": "traveler", "mfa_verified": False, "country": "CO", "hotel_id": None})
+    token = create_access_token(
+        {
+            "sub": str(test_user.id),
+            "role": "traveler",
+            "mfa_verified": False,
+            "country": "CO",
+            "hotel_id": None,
+        }
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -73,7 +81,15 @@ async def test_chain_invalid_token_returns_401(async_client):
 
 @pytest.mark.asyncio
 async def test_chain_refresh_token_rejected_returns_401(async_client, test_user):
-    refresh = create_refresh_token({"sub": str(test_user.id), "role": "traveler", "mfa_verified": False, "country": "CO", "hotel_id": None})
+    refresh = create_refresh_token(
+        {
+            "sub": str(test_user.id),
+            "role": "traveler",
+            "mfa_verified": False,
+            "country": "CO",
+            "hotel_id": None,
+        }
+    )
     response = await async_client.get(
         ME_URL, headers={"Authorization": f"Bearer {refresh}"}
     )
@@ -86,17 +102,27 @@ async def test_chain_refresh_token_rejected_returns_401(async_client, test_user)
 
 @pytest.mark.asyncio
 async def test_chain_valid_token_wrong_role_returns_403(async_client, test_user):
-    from fastapi import Depends, Request
+    from fastapi import Request
+
     from app.middleware.auth_chain import build_auth_chain
 
     # Simulamos un endpoint que requiere admin_sistema
     # Usamos directamente el chain para testear el RoleFilter
     chain = build_auth_chain(allowed_roles=["admin_sistema"])
 
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import MagicMock
+
     from starlette.datastructures import Headers
 
-    token = create_access_token({"sub": str(test_user.id), "role": "traveler", "mfa_verified": False, "country": "CO", "hotel_id": None})
+    token = create_access_token(
+        {
+            "sub": str(test_user.id),
+            "role": "traveler",
+            "mfa_verified": False,
+            "country": "CO",
+            "hotel_id": None,
+        }
+    )
     mock_request = MagicMock(spec=Request)
     mock_request.headers = Headers({"authorization": f"Bearer {token}"})
     mock_request.state = MagicMock()

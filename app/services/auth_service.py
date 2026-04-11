@@ -6,17 +6,21 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.user import User
 from app.schemas.user import (
-    MFASetupResponse,
     MessageResponse,
+    MFASetupResponse,
     TokenResponse,
     UserRegisterRequest,
     UserResponse,
     UserUpdateRequest,
 )
-from app.config import settings
-from app.utils.jwt_handler import create_access_token, create_refresh_token, decode_token
+from app.utils.jwt_handler import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
 from app.utils.security import (
     generate_totp_secret,
     hash_password,
@@ -30,11 +34,17 @@ logger = logging.getLogger(__name__)
 async def register_user(request: UserRegisterRequest, db: AsyncSession) -> UserResponse:
     result_email = await db.execute(select(User).where(User.email == request.email))
     if result_email.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Ya existe un usuario con ese email")
+        raise HTTPException(
+            status_code=409, detail="Ya existe un usuario con ese email"
+        )
 
-    result_username = await db.execute(select(User).where(User.username == request.username))
+    result_username = await db.execute(
+        select(User).where(User.username == request.username)
+    )
     if result_username.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Ya existe un usuario con ese username")
+        raise HTTPException(
+            status_code=409, detail="Ya existe un usuario con ese username"
+        )
 
     user = User(
         email=request.email,
@@ -107,13 +117,9 @@ async def _handle_failed_attempt(user: User, db: AsyncSession) -> None:
 
 def _validate_mfa(user: User, totp_code: str | None) -> None:
     if not totp_code:
-        raise HTTPException(
-            status_code=428, detail="Código MFA requerido"
-        )
+        raise HTTPException(status_code=428, detail="Código MFA requerido")
     if not user.mfa_secret or not verify_totp(user.mfa_secret, totp_code):
-        raise HTTPException(
-            status_code=401, detail="Código MFA inválido"
-        )
+        raise HTTPException(status_code=401, detail="Código MFA inválido")
 
 
 ROLE_MAP = {
@@ -216,9 +222,7 @@ async def setup_mfa(user_id: str, db: AsyncSession) -> MFASetupResponse:
     return MFASetupResponse(secret=secret, qr_uri=qr_uri)
 
 
-async def verify_mfa(
-    user_id: str, totp_code: str, db: AsyncSession
-) -> MessageResponse:
+async def verify_mfa(user_id: str, totp_code: str, db: AsyncSession) -> MessageResponse:
     user = await _get_user_by_id(user_id, db)
 
     if not user.mfa_secret:

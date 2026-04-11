@@ -1,7 +1,7 @@
 from app.schemas.user import (
+    MessageResponse,
     MFASetupResponse,
     MFAVerifyRequest,
-    MessageResponse,
     RefreshTokenRequest,
     TokenResponse,
     UserLoginRequest,

@@ -61,3 +61,4 @@ coverage.xml
 # Alembic compiled
 alembic/__pycache__/
 alembic/versions/__pycache__/
+key.json

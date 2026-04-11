@@ -1,0 +1,198 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop, "feature/*"]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  REGION: us-central1
+  SERVICE_NAME: user-services
+  DEV_PROJECT_ID: gen-lang-client-0930444414
+  DEV_IMAGE: us-central1-docker.pkg.dev/gen-lang-client-0930444414/user-services/user-services
+  PROD_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROD_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/user-services/user-services
+
+jobs:
+  tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-fail-under=75 -v
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install "black>=24,<27" "isort>=5,<9" "ruff>=0.4"
+
+      - name: Check formatting with black
+        run: black --check app/ tests/
+
+      - name: Check imports with isort
+        run: isort --check-only app/ tests/
+
+      - name: Lint with ruff
+        run: ruff check app/ tests/
+
+  # ── DEV: deploy directo a Cloud Run ──
+  deploy-dev:
+    name: Deploy to Dev (Cloud Run)
+    runs-on: ubuntu-latest
+    needs: [tests, lint]
+    if: >
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/feature/'))
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build --target production \
+            -t ${{ env.DEV_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.DEV_IMAGE }}:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.DEV_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.DEV_IMAGE }}:latest
+
+      - name: Deploy to Cloud Run (dev)
+        run: |
+          gcloud run deploy user-services \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --image=${{ env.DEV_IMAGE }}:${{ github.sha }} \
+            --port=8000 \
+            --allow-unauthenticated \
+            --no-traffic \
+            --min-instances=1 \
+            --max-instances=10 \
+            --set-env-vars="\
+              ENVIRONMENT=production,\
+              DEBUG=true,\
+              JWT_ALGORITHM=RS256,\
+              JWT_ISSUER=https://auth.travelhub.app,\
+              JWT_AUDIENCE=travelhub-api,\
+              JWT_ACCESS_TTL=900,\
+              JWT_REFRESH_TTL=604800,\
+              RATE_LIMIT_REQUESTS=100,\
+              RATE_LIMIT_WINDOW_SECONDS=60" \
+            --set-secrets="\
+              DATABASE_URL=DATABASE_URL:latest,\
+              DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,\
+              RSA_PRIVATE_KEY_B64=RSA_PRIVATE_KEY_B64:latest" \
+            --quiet
+
+      - name: Migrate traffic to new revision
+        run: |
+          gcloud run services update-traffic user-services \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --to-latest
+
+      - name: Show service URL
+        run: |
+          gcloud run services describe user-services \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --format="value(status.url)"
+
+  # ── PROD: Cloud Deploy con canary progresivo ──
+  deploy-prod:
+    name: Deploy to Prod (Cloud Deploy Canary)
+    runs-on: ubuntu-latest
+    needs: [tests, lint]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build --target production \
+            -t ${{ env.PROD_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.PROD_IMAGE }}:latest .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.PROD_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.PROD_IMAGE }}:latest
+
+      - name: Create Cloud Deploy release (canary)
+        run: |
+          gcloud deploy releases create prod-${GITHUB_SHA::8}-$(date +%Y%m%d%H%M%S) \
+            --project=${{ env.PROD_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --delivery-pipeline=${{ env.SERVICE_NAME }} \
+            --images=user-services=${{ env.PROD_IMAGE }}:${{ github.sha }} \
+            --skaffold-file=skaffold.yaml
+
+  # ── PR: solo validar build ──
+  docker-build:
+    name: Docker Build (PR check)
+    runs-on: ubuntu-latest
+    needs: [tests, lint]
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build --target production -t user-services:${{ github.sha }} .

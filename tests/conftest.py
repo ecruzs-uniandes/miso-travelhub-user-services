@@ -8,7 +8,9 @@ from app.main import app
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
 engine_test = create_async_engine(TEST_DATABASE_URL, echo=False)
-async_session_test = async_sessionmaker(engine_test, class_=AsyncSession, expire_on_commit=False)
+async_session_test = async_sessionmaker(
+    engine_test, class_=AsyncSession, expire_on_commit=False
+)
 
 
 async def override_get_db():

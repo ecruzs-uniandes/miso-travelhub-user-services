@@ -28,7 +28,15 @@ async def test_user(db_session):
 
 @pytest_asyncio.fixture
 def auth_headers(test_user):
-    token = create_access_token({"sub": str(test_user.id), "role": "traveler", "mfa_verified": False, "country": "CO", "hotel_id": None})
+    token = create_access_token(
+        {
+            "sub": str(test_user.id),
+            "role": "traveler",
+            "mfa_verified": False,
+            "country": "CO",
+            "hotel_id": None,
+        }
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -103,7 +111,5 @@ async def test_mfa_verify_without_setup_returns_400(async_client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_mfa_verify_without_token_returns_401(async_client):
-    response = await async_client.post(
-        MFA_VERIFY_URL, json={"totp_code": "123456"}
-    )
+    response = await async_client.post(MFA_VERIFY_URL, json={"totp_code": "123456"})
     assert response.status_code == 401

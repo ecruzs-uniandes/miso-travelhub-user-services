@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import app.models.user  # noqa: F401 — registra el modelo en Base.metadata
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Tablas verificadas/creadas al arrancar")
@@ -51,7 +52,9 @@ async def handle_db_connection_error(request: Request, exc: OperationalError):
 
 @app.exception_handler(Exception)
 async def handle_unexpected_error(request: Request, exc: Exception):
-    logger.error("Error inesperado en %s %s: %s", request.method, request.url.path, str(exc))
+    logger.error(
+        "Error inesperado en %s %s: %s", request.method, request.url.path, str(exc)
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": "Error interno del servidor"},
