@@ -110,6 +110,7 @@ jobs:
             --image=${{ env.DEV_IMAGE }}:${{ github.sha }} \
             --port=8000 \
             --allow-unauthenticated \
+            --no-traffic \
             --min-instances=1 \
             --max-instances=10 \
             --set-env-vars="\
@@ -124,9 +125,16 @@ jobs:
               RATE_LIMIT_WINDOW_SECONDS=60" \
             --set-secrets="\
               DATABASE_URL=DATABASE_URL:latest,\
-              DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,
+              DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,\
               RSA_PRIVATE_KEY_B64=RSA_PRIVATE_KEY_B64:latest" \
             --quiet
+
+      - name: Migrate traffic to new revision
+        run: |
+          gcloud run services update-traffic user-services \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --to-latest
 
       - name: Show service URL
         run: |
