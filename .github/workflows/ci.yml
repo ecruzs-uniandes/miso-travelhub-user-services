@@ -49,7 +49,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          pip install black isort ruff
+          pip install "black>=24,<27" "isort>=5,<9" "ruff>=0.4"
 
       - name: Check formatting with black
         run: black --check app/ tests/

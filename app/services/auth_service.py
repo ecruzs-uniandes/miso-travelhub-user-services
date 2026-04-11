@@ -8,13 +8,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.user import User
-from app.schemas.user import (MessageResponse, MFASetupResponse, TokenResponse,
-                              UserRegisterRequest, UserResponse,
-                              UserUpdateRequest)
-from app.utils.jwt_handler import (create_access_token, create_refresh_token,
-                                   decode_token)
-from app.utils.security import (generate_totp_secret, hash_password,
-                                verify_password, verify_totp)
+from app.schemas.user import (
+    MessageResponse,
+    MFASetupResponse,
+    TokenResponse,
+    UserRegisterRequest,
+    UserResponse,
+    UserUpdateRequest,
+)
+from app.utils.jwt_handler import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+)
+from app.utils.security import (
+    generate_totp_secret,
+    hash_password,
+    verify_password,
+    verify_totp,
+)
 
 logger = logging.getLogger(__name__)
 
