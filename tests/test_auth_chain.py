@@ -102,7 +102,7 @@ async def test_chain_refresh_token_rejected_returns_401(async_client, test_user)
 
 @pytest.mark.asyncio
 async def test_chain_valid_token_wrong_role_returns_403(async_client, test_user):
-    from fastapi import Depends, Request
+    from fastapi import Request
 
     from app.middleware.auth_chain import build_auth_chain
 
@@ -110,7 +110,7 @@ async def test_chain_valid_token_wrong_role_returns_403(async_client, test_user)
     # Usamos directamente el chain para testear el RoleFilter
     chain = build_auth_chain(allowed_roles=["admin_sistema"])
 
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import MagicMock
 
     from starlette.datastructures import Headers
 
