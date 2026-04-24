@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tests & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+test.db
+*.db
+
+# IDEs y OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Env files (deben inyectarse en runtime)
+.env
+.env.*
+!.env.example
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Documentación y configs no necesarios en la imagen
+README.md
+CLAUDE.md
+CONTEXT*.md
+docs/
+postman/
+openapi-spec.yaml
+*.postman_collection.json
+*.postman_environment.json
+
+# GCP / Kubernetes / Deploy (no deben ir a la imagen)
+cloudbuild.yaml
+clouddeploy.yaml
+skaffold.yaml
+k8s/
+deploy/
+key.json
+*.json.key
+service-account.json
+gcloud-service-key.json
