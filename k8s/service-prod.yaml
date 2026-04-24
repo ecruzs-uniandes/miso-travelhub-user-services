@@ -1,11 +1,11 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: user-services-prod
+  name: user-services
   labels:
     cloud.googleapis.com/location: us-central1
   annotations:
-    run.googleapis.com/ingress: internal-and-cloud-load-balancing
+    run.googleapis.com/ingress: all
     run.googleapis.com/launch-stage: GA
 spec:
   template:
@@ -16,6 +16,8 @@ spec:
         run.googleapis.com/startup-cpu-boost: "true"
         run.googleapis.com/cpu-throttling: "false"
         run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/vpc-access-connector: prod-travelhub-connector
+        run.googleapis.com/vpc-access-egress: private-ranges-only
     spec:
       containerConcurrency: 80
       timeoutSeconds: 300
@@ -29,7 +31,7 @@ spec:
               memory: 1Gi
           env:
             - name: ENVIRONMENT
-              value: prod
+              value: production
             - name: DEBUG
               value: "false"
             - name: JWT_ALGORITHM
@@ -61,6 +63,11 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: DATABASE_URL_SYNC
+                  key: latest
+            - name: RSA_PRIVATE_KEY_B64
+              valueFrom:
+                secretKeyRef:
+                  name: RSA_PRIVATE_KEY_B64
                   key: latest
           startupProbe:
             httpGet:

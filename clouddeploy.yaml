@@ -23,4 +23,4 @@ metadata:
 description: Production environment
 requireApproval: true
 run:
-  location: projects/<PROJECT_ID>/locations/us-central1
+  location: projects/travelhub-prod-492116/locations/us-central1

@@ -1,9 +1,22 @@
+# Cloud Build job para correr migraciones Alembic
+# Usa el secret DATABASE_URL_SYNC del Secret Manager del proyecto actual.
+# Ejecutar: gcloud builds submit --config=deploy/migrate.yaml --substitutions=_TAG=latest --no-source
+
+substitutions:
+  _SERVICE_NAME: user-services
+  _REGION: us-central1
+  _TAG: latest
+
 steps:
-  - name: 'gcr.io/$PROJECT_ID/user-services:latest'
-    entrypoint: 'alembic'
-    args: ['upgrade', 'head']
-    env:
-      - 'DATABASE_URL_SYNC=postgresql+psycopg2://travelhub_app:lALk8rAOj1TSltRQzGavZdBCrSu67ZJg@10.100.0.3:5432/travelhub'
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}:${_TAG}'
+    entrypoint: 'sh'
+    args: ['-c', 'cd /app && alembic upgrade head']
+    secretEnv: ['DATABASE_URL_SYNC']
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/DATABASE_URL_SYNC/versions/latest
+      env: DATABASE_URL_SYNC
 
 options:
   logging: CLOUD_LOGGING_ONLY
