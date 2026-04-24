@@ -137,12 +137,17 @@ user-services/
 ├── postman/
 │   ├── user-services.postman_collection.json
 │   └── user-services.postman_environment.json
-├── clouddeploy.yaml                # Cloud Deploy pipeline (prod canary)
+├── deploy/
+│   ├── deploy.sh                   # Script manual (dev/prod) build+migrate+deploy
+│   └── migrate.yaml                # Cloud Build job para correr alembic
+├── clouddeploy.yaml                # Cloud Deploy pipeline (prod canary 10→50→100)
+├── cloudbuild.yaml                 # Cloud Build parametrizado (build+push+migrate+deploy)
 ├── skaffold.yaml                   # Skaffold config con health verification
 ├── pyproject.toml                  # Config de black e isort
 ├── alembic.ini
 ├── docker-compose.yml
 ├── Dockerfile
+├── .dockerignore
 ├── requirements.txt
 ├── .coveragerc
 └── pytest.ini
@@ -182,7 +187,9 @@ ENVIRONMENT=development
 DEBUG=true
 ```
 
-> **Importante:** En produccion, las claves RSA deberian gestionarse mediante Cloud KMS o un servicio de secretos equivalente. Para este sprint se generan en memoria al arrancar.
+> **Gestion de claves RSA:**
+> - **Local**: se generan en memoria al arrancar el servicio (solo para desarrollo).
+> - **DEV/PROD**: se usa una clave RSA 2048 (PKCS#8, base64) guardada en GCP Secret Manager como `RSA_PRIVATE_KEY_B64`. Cloud Run la inyecta como variable de entorno. Las claves de DEV y PROD son **independientes** por seguridad.
 
 ### Instalacion Local
 
@@ -662,32 +669,64 @@ Ejemplos:
 
 ## Despliegue
 
-El despliegue se gestiona automaticamente mediante **GitHub Actions**. Cada push ejecuta el pipeline CI/CD correspondiente segun la rama.
+El despliegue se gestiona automaticamente mediante **GitHub Actions** con autenticacion via **Workload Identity Federation (WIF)**. Cada push ejecuta el pipeline CI/CD correspondiente segun la rama. No se usan service account keys.
 
-> **Primera vez?** Antes de desplegar, es necesario configurar la infraestructura en GCP y los secrets en GitHub. Seguir la guia completa en **[docs/gcp-setup.md](docs/gcp-setup.md)**.
+> **Guia completa de infraestructura GCP:** ver **[docs/gcp-setup.md](docs/gcp-setup.md)**.
+
+### Ambientes desplegados
+
+| Ambiente | Proyecto GCP | URL | Pipeline |
+|---|---|---|---|
+| DEV | `gen-lang-client-0930444414` | https://user-services-154299161799.us-central1.run.app | Cloud Run directo |
+| PROD | `travelhub-prod-492116` | https://user-services-qhweqfkejq-uc.a.run.app | Cloud Deploy (canary) |
 
 ### Flujo por rama
 
-| Rama | Que hace | Ambiente |
-|------|----------|----------|
-| `feature/*`, `develop` | Tests + Lint + Build + Deploy automatico | DEV (Cloud Run directo) |
-| `main` | Tests + Lint + Build + Cloud Deploy canary (10% -> 50% -> 100%) | PROD (requiere aprobacion) |
+| Rama / evento | Jobs | Ambiente |
+|---|---|---|
+| Push a `feature/*` o `develop` | Tests + Lint + Build + Deploy | DEV (Cloud Run directo) |
+| Push a `main` | Tests + Lint + Migraciones + **Cloud Deploy release** canary (10% → 50% → 100%) | PROD (requiere aprobacion) |
 | PR a `main`/`develop` | Tests + Lint + Docker Build (sin deploy) | Ninguno |
 
 ### DEV
 
-Cada push a `feature/*` o `develop` despliega automaticamente a Cloud Run en el proyecto de desarrollo. Las variables no sensibles se definen en el workflow y los secrets (`DATABASE_URL`, `DATABASE_URL_SYNC`) se inyectan desde GCP Secret Manager.
+Cada push a `feature/*` o `develop` despliega automaticamente a Cloud Run en el proyecto de desarrollo. GitHub Actions se autentica via WIF y lanza `gcloud run deploy` con los secrets (`DATABASE_URL`, `DATABASE_URL_SYNC`, `RSA_PRIVATE_KEY_B64`) inyectados desde GCP Secret Manager.
 
 ### PROD
 
-Cada push a `main` crea un release en Cloud Deploy con estrategia **canary**:
+Cada push a `main` ejecuta:
 
-1. **Aprobacion manual** en la consola de Cloud Deploy
-2. **10% del trafico** a la nueva version + verificacion de salud
-3. **50% del trafico** + verificacion de salud
-4. **100% del trafico** (stable)
+1. **Tests + Lint** (bloquea si falla cobertura <75% o lint)
+2. **Build + push** de la imagen a Artifact Registry prod
+3. **Migraciones Alembic** vía Cloud Run Job con VPC connector (necesario para alcanzar la IP privada de Cloud SQL)
+4. **Cloud Deploy release** con estrategia canary:
+   - Aprobacion manual → **10% del trafico** + verificacion `/health`
+   - Aprobacion manual → **50% del trafico** + verificacion
+   - Aprobacion manual → **100% del trafico** (stable)
 
-Si la verificacion falla en cualquier fase, el trafico permanece en la version anterior (rollback automatico).
+Si la verificacion falla en cualquier fase, el trafico permanece en la version anterior (rollback automatico). Rollback manual desde la consola de Cloud Deploy.
+
+> **Primer release**: Cloud Deploy salta automaticamente las fases canary (10%, 50%) porque no tiene una revision previa gestionada para hacer split de trafico — va directo a `stable`. Los siguientes releases si haran canary progresivo real.
+
+### Seguridad de credenciales
+
+- **Autenticacion**: GitHub Actions → GCP via OIDC (WIF). Sin secretos de larga duracion.
+- **Restricciones WIF**:
+  - DEV acepta solo `repo == ecruzs-uniandes/miso-travelhub-user-services && ref matches (develop|feature/*)`
+  - PROD acepta solo `repo == ecruzs-uniandes/miso-travelhub-user-services && ref == main`
+- **Secretos en runtime**: `DATABASE_URL`, `DATABASE_URL_SYNC`, `RSA_PRIVATE_KEY_B64` en GCP Secret Manager. El binario nunca ve las credenciales hasta que Cloud Run las inyecta.
+- **RSA**: claves **separadas por ambiente** generadas localmente con `openssl` y guardadas como base64 PKCS#8 en Secret Manager.
+
+### Despliegue manual
+
+El script `deploy/deploy.sh` soporta ambos ambientes:
+
+```bash
+./deploy/deploy.sh dev                  # build + migrate + deploy a DEV
+./deploy/deploy.sh prod                 # build + migrate + deploy a PROD
+./deploy/deploy.sh dev --only-migrate   # solo migraciones en DEV
+./deploy/deploy.sh prod --only-migrate  # solo migraciones en PROD
+```
 
 ### Build local de imagen Docker
 
@@ -695,7 +734,7 @@ Si la verificacion falla en cualquier fase, el trafico permanece en la version a
 # Imagen de desarrollo (con hot reload)
 docker build --target development -t user-services:dev .
 
-# Imagen de produccion (con 4 workers)
+# Imagen de produccion
 docker build --target production -t user-services:latest .
 ```
 

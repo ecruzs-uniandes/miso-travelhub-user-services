@@ -1,51 +1,91 @@
+# Cloud Build pipeline — user-services
+# Substitutions (puedes pasarlas con --substitutions o configurarlas en el trigger):
+#   _REGION            (default: us-central1)
+#   _SERVICE_NAME      (default: user-services)
+#   _VPC_CONNECTOR     (default: travelhub-connector)  — usar prod-travelhub-connector en prod
+#   _ENVIRONMENT       (default: production)
+#   _DEBUG             (default: false)
+#
+# Los secretos (DATABASE_URL, DATABASE_URL_SYNC, RSA_PRIVATE_KEY_B64) se inyectan
+# via --set-secrets desde Secret Manager del proyecto activo ($PROJECT_ID).
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE_NAME: user-services
+  _VPC_CONNECTOR: travelhub-connector
+  _ENVIRONMENT: production
+  _DEBUG: "false"
+  _MIN_INSTANCES: "0"
+  _MAX_INSTANCES: "10"
+  _MEMORY: 512Mi
+  _CPU: "1"
+
 steps:
-  # 1. Build de la imagen Docker
+  # 1. Build de la imagen Docker (target production)
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
       - '--target'
       - 'production'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/user-services:latest'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}:$SHORT_SHA'
+      - '-t'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}:latest'
       - '.'
 
-  # 2. Push de la imagen a Container Registry
+  # 2. Push a Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'gcr.io/$PROJECT_ID/user-services:latest'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}'
 
-  # 3. Deploy a Cloud Run
+  # 3. Correr migraciones Alembic (contenedor efímero con acceso a VPC)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud run jobs deploy ${_SERVICE_NAME}-migrate \
+          --project=$PROJECT_ID \
+          --region=${_REGION} \
+          --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}:$SHORT_SHA \
+          --vpc-connector=${_VPC_CONNECTOR} \
+          --set-secrets=DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest \
+          --command=alembic --args=upgrade,head \
+          --max-retries=1 \
+          --task-timeout=300 \
+          --quiet
+        gcloud run jobs execute ${_SERVICE_NAME}-migrate \
+          --project=$PROJECT_ID \
+          --region=${_REGION} \
+          --wait --quiet
+
+  # 4. Deploy a Cloud Run con secrets inyectados
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'gcloud'
     args:
       - 'run'
       - 'deploy'
-      - 'user-services'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/user-services:latest'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
-      - '--port'
-      - '8000'
+      - '${_SERVICE_NAME}'
+      - '--project=$PROJECT_ID'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}:$SHORT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--port=8000'
       - '--allow-unauthenticated'
-      - '--vpc-connector'
-      - 'travelhub-connector'
-      - '--memory'
-      - '512Mi'
-      - '--cpu'
-      - '1'
-      - '--min-instances'
-      - '0'
-      - '--max-instances'
-      - '10'
-      - '--update-env-vars'
-      - 'DATABASE_URL=postgresql+asyncpg://travelhub_app:lALk8rAOj1TSltRQzGavZdBCrSu67ZJg@10.100.0.3:5432/travelhub,DATABASE_URL_SYNC=postgresql+psycopg2://travelhub_app:lALk8rAOj1TSltRQzGavZdBCrSu67ZJg@10.100.0.3:5432/travelhub,JWT_ISSUER=https://auth.travelhub.app,JWT_AUDIENCE=travelhub-api,JWT_ALGORITHM=RS256,JWT_ACCESS_TTL=900,JWT_REFRESH_TTL=604800,ENVIRONMENT=production,DEBUG=false'
+      - '--vpc-connector=${_VPC_CONNECTOR}'
+      - '--memory=${_MEMORY}'
+      - '--cpu=${_CPU}'
+      - '--min-instances=${_MIN_INSTANCES}'
+      - '--max-instances=${_MAX_INSTANCES}'
+      - '--set-env-vars=ENVIRONMENT=${_ENVIRONMENT},DEBUG=${_DEBUG},JWT_ALGORITHM=RS256,JWT_ISSUER=https://auth.travelhub.app,JWT_AUDIENCE=travelhub-api,JWT_ACCESS_TTL=900,JWT_REFRESH_TTL=604800,RATE_LIMIT_REQUESTS=100,RATE_LIMIT_WINDOW_SECONDS=60'
+      - '--set-secrets=DATABASE_URL=DATABASE_URL:latest,DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,RSA_PRIVATE_KEY_B64=RSA_PRIVATE_KEY_B64:latest'
+      - '--quiet'
 
 images:
-  - 'gcr.io/$PROJECT_ID/user-services:latest'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}:$SHORT_SHA'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_SERVICE_NAME}/${_SERVICE_NAME}:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

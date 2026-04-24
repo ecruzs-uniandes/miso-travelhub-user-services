@@ -29,22 +29,62 @@ docker build --target production -t user-services:latest .
 
 ## CI/CD
 
-Pipeline en `.github/workflows/ci.yml`. Se ejecuta automáticamente en cada push.
+Pipeline en `.github/workflows/ci.yml`. Auth vía **Workload Identity Federation** (sin SA keys). Se ejecuta automáticamente en cada push.
 
-| Rama | Acción |
-|------|--------|
-| `feature/*`, `develop` | Tests + Lint + Build + Deploy a **DEV** (Cloud Run directo) |
-| `main` | Tests + Lint + Build + **Cloud Deploy canary** a PROD (10%→50%→100%, requiere aprobación) |
+| Rama / evento | Acción |
+|---|---|
+| Push a `feature/*`, `develop` | Tests + Lint + Build + Deploy a **DEV** (Cloud Run directo, gcloud run deploy) |
+| Push a `main` | Tests + Lint + Build + Migraciones + **Cloud Deploy release** canary (10%→50%→100%, aprobación manual entre fases) |
 | PR a `main`/`develop` | Tests + Lint + Docker Build (sin deploy) |
 
-### Variables de entorno en CI/CD
-- **No sensibles** (JWT config, rate limits, etc.): definidas en `ci.yml` (dev) y `k8s/service-prod.yaml` (prod)
-- **Secrets** (`DATABASE_URL`, `DATABASE_URL_SYNC`): GCP Secret Manager, inyectados via `--set-secrets`
-- **Guía de setup GCP**: `docs/gcp-setup.md`
+### Variables de entorno
+- **No sensibles** (JWT config, rate limits, etc.): hardcoded en `ci.yml` / `k8s/service-prod.yaml`
+- **Secrets** (`DATABASE_URL`, `DATABASE_URL_SYNC`, `RSA_PRIVATE_KEY_B64`): GCP Secret Manager, inyectados via `--set-secrets`
+- **WIF provider + SA**: hardcoded en `ci.yml` (no son sensibles)
+- **NO hay secrets en GitHub** que configurar (ni `GCP_SA_KEY` ni `GCP_PROJECT_ID`)
 
 ### Proyectos GCP
-- **DEV**: `gen-lang-client-0930444414` (Cloud Run directo, deploy automático)
-- **PROD**: configurado via secret `GCP_PROJECT_ID` (Cloud Deploy con canary + aprobación manual)
+
+| Ambiente | Project ID | Project Number | URL | Cloud SQL | VPC Connector |
+|---|---|---|---|---|---|
+| DEV | `gen-lang-client-0930444414` | `154299161799` | `https://user-services-154299161799.us-central1.run.app` | `travelhub-db` (10.100.0.3) | `travelhub-connector` |
+| PROD | `travelhub-prod-492116` | `974898737307` | `https://user-services-qhweqfkejq-uc.a.run.app` | `prod-travelhub-db` (10.200.0.3) | `prod-travelhub-connector` |
+
+### WIF (Workload Identity Federation)
+
+- **Pool**: `github-pool` en ambos proyectos
+- **Provider**: `github-provider` OIDC GitHub
+- **Restricciones** (via `attributeCondition`):
+  - DEV: `assertion.repository=='ecruzs-uniandes/miso-travelhub-user-services' && (assertion.ref=='refs/heads/develop' || assertion.ref.startsWith('refs/heads/feature/'))`
+  - PROD: `assertion.repository=='ecruzs-uniandes/miso-travelhub-user-services' && assertion.ref=='refs/heads/main'`
+- **Service Account**: `github-deploy@<PROJECT>.iam.gserviceaccount.com` por ambiente
+
+### Migraciones en PROD
+
+Cloud Build no tiene acceso al VPC privado, por lo que las migraciones en prod corren como **Cloud Run Job** (`user-services-migrate`) con VPC connector `prod-travelhub-connector`. El job se crea/ejecuta en cada release desde el `ci.yml`. En DEV, también via Cloud Run Job o Cloud Build (ambos con VPC).
+
+### Cloud Deploy (PROD)
+
+- Pipeline: `user-services` en `us-central1`
+- Target: `prod` con `requireApproval: true`
+- Estrategia: canary `[10, 50]` con `verify: true` y `automaticTrafficControl`
+- **Primer release**: salta fases canary (esperado, sin revisión previa gestionada). Siguientes releases hacen canary real.
+- Rollback: desde consola de Cloud Deploy
+
+### Despliegue manual
+
+```bash
+./deploy/deploy.sh dev                  # build + migrate + deploy a DEV
+./deploy/deploy.sh prod                 # build + migrate + deploy a PROD (sin canary)
+./deploy/deploy.sh {dev|prod} --only-migrate
+
+# Canary en PROD vía Cloud Deploy:
+gcloud deploy releases create manual-$(date +%s) \
+  --project=travelhub-prod-492116 --region=us-central1 \
+  --delivery-pipeline=user-services \
+  --images=user-services=us-central1-docker.pkg.dev/travelhub-prod-492116/user-services/user-services:latest \
+  --skaffold-file=skaffold.yaml
+```
 
 ## Stack
 

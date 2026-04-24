@@ -1,0 +1,580 @@
+swagger: "2.0"
+info:
+  title: "TravelHub API Gateway"
+  description: |
+    Gateway de entrada para TravelHub. Valida JWT a nivel de infraestructura
+    y rutea a microservicios en Cloud Run.
+  version: "1.0.0"
+
+host: "travelhub-gateway-1yvtqj7r.uc.gateway.dev"
+schemes:
+  - "https"
+produces:
+  - "application/json"
+consumes:
+  - "application/json"
+
+x-google-endpoints:
+  - name: "travelhub-gateway-1yvtqj7r.uc.gateway.dev"
+    allowCors: true
+
+securityDefinitions:
+  travelhub_jwt:
+    authorizationUrl: ""
+    flow: "implicit"
+    type: "oauth2"
+    x-google-issuer: "https://auth.travelhub.app"
+    x-google-jwks_uri: "https://user-services-ridyy4wz4q-uc.a.run.app/.well-known/jwks.json"
+    x-google-audiences: "travelhub-api"
+
+paths:
+  # ─── User Services (public) ───
+  /.well-known/jwks.json:
+    get:
+      operationId: "GetJwks"
+      summary: "JWKS endpoint"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "GetJwksCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /api/v1/auth/login:
+    post:
+      operationId: "AuthLogin"
+      summary: "Login"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "AuthLoginCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /api/v1/auth/register:
+    post:
+      operationId: "AuthRegister"
+      summary: "Register"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "201":
+          description: "Created"
+    options:
+      operationId: "AuthRegisterCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /api/v1/auth/refresh:
+    post:
+      operationId: "AuthRefresh"
+      summary: "Refresh token"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "AuthRefreshCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── User Services (protected) ───
+  /api/v1/auth/me:
+    get:
+      operationId: "GetUserInfo"
+      summary: "Get current user info"
+      security:
+        - travelhub_jwt: []
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    put:
+      operationId: "UpdateUserProfile"
+      summary: "Update user profile"
+      security:
+        - travelhub_jwt: []
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "AuthMeCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /api/v1/auth/mfa/setup:
+    post:
+      operationId: "MfaSetup"
+      summary: "MFA setup"
+      security:
+        - travelhub_jwt: []
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "MfaSetupCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /api/v1/auth/mfa/verify:
+    post:
+      operationId: "MfaVerify"
+      summary: "MFA verify"
+      security:
+        - travelhub_jwt: []
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "MfaVerifyCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /api/v1/admin/{path}:
+    get:
+      operationId: "AdminGet"
+      summary: "Admin endpoints"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "AdminCors"
+      summary: "CORS preflight"
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── Booking Services ───
+  /api/v1/bookings/{path}:
+    get:
+      operationId: "BookingServicesGet"
+      summary: "Booking GET"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://booking-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    post:
+      operationId: "BookingServicesPost"
+      summary: "Booking POST"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://booking-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "BookingServicesCors"
+      summary: "CORS preflight"
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://booking-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── Cart Services ───
+  /api/v1/cart/{path}:
+    get:
+      operationId: "CartServicesGet"
+      summary: "Cart GET"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://shopping-cart-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    post:
+      operationId: "CartServicesPost"
+      summary: "Cart POST"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://shopping-cart-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "CartServicesCors"
+      summary: "CORS preflight"
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://shopping-cart-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── Inventory Services ───
+  /api/v1/inventory/{path}:
+    get:
+      operationId: "InventoryServicesGet"
+      summary: "Inventory GET"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://inventory-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    put:
+      operationId: "InventoryServicesPut"
+      summary: "Inventory PUT"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://inventory-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "InventoryServicesCors"
+      summary: "CORS preflight"
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://inventory-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── Notification Services ───
+  /api/v1/notifications/{path}:
+    get:
+      operationId: "NotificationServices"
+      summary: "Notifications"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://notification-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "NotificationServicesCors"
+      summary: "CORS preflight"
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://notification-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── Payment Services ───
+  /api/v1/payments/{path}:
+    post:
+      operationId: "PaymentServices"
+      summary: "Payments"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://payments-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "PaymentServicesCors"
+      summary: "CORS preflight"
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://payments-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── PMS Integration Services ───
+  /api/v1/pms/{path}:
+    get:
+      operationId: "PmsServicesGet"
+      summary: "PMS GET"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://pms-integration-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    post:
+      operationId: "PmsServicesPost"
+      summary: "PMS POST"
+      security:
+        - travelhub_jwt: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://pms-integration-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "PmsServicesCors"
+      summary: "CORS preflight"
+      parameters:
+        - name: path
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: "https://pms-integration-services-PLACEHOLDER.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── Health ───
+  /health:
+    get:
+      operationId: "HealthCheck"
+      summary: "Health check"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "HealthCheckCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://user-services-ridyy4wz4q-uc.a.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  # ─── Search Services ───
+  /search/ping:
+    get:
+      operationId: "HealthCheckSearchService"
+      summary: "Search service health"
+      x-google-backend:
+        address: "https://dev-search-service-app-service-154299161799.us-central1.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "HealthCheckSearchServiceCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://dev-search-service-app-service-154299161799.us-central1.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /search/search_cities:
+    get:
+      operationId: "SearchCities"
+      summary: "Search cities"
+      x-google-backend:
+        address: "https://dev-search-service-app-service-154299161799.us-central1.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "SearchCitiesCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://dev-search-service-app-service-154299161799.us-central1.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
+
+  /search/search_rooms:
+    get:
+      operationId: "SearchRooms"
+      summary: "Search rooms"
+      parameters:
+        - name: ciudad
+          in: query
+          type: string
+        - name: checkin
+          in: query
+          type: string
+        - name: checkout
+          in: query
+          type: string
+        - name: group
+          in: query
+          type: integer
+        - name: rooms
+          in: query
+          type: integer
+      x-google-backend:
+        address: "https://dev-search-service-app-service-154299161799.us-central1.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "200":
+          description: "OK"
+    options:
+      operationId: "SearchRoomsCors"
+      summary: "CORS preflight"
+      x-google-backend:
+        address: "https://dev-search-service-app-service-154299161799.us-central1.run.app"
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        "204":
+          description: "CORS preflight"
