@@ -121,7 +121,29 @@ k8s/
 └── service-prod.yaml    # Manifiesto Cloud Run producción (env vars + secrets)
 docs/
 └── gcp-setup.md         # Guía de configuración GCP por primera vez
+postman/
+├── user-services.postman_collection.json
+├── user-services.postman_environment.json      # entorno local (localhost:8000)
+└── user-services.postman_environment.dev.json  # entorno DEV Cloud Run
 ```
+
+## Endpoints HTTP
+
+Prefijo: `/api/v1`. Auth vía `Authorization: Bearer <access_token>` (o `X-Forwarded-Authorization` cuando viene del gateway).
+
+| Método | Path | Auth | Descripción | Códigos |
+|---|---|---|---|---|
+| GET  | `/health` | público | Health check `{status, service, version}` | 200 |
+| GET  | `/.well-known/jwks.json` | público | JWKS RS256 (kid `travelhub-key-1`) | 200 |
+| POST | `/api/v1/auth/register` | público | Crea usuario rol `viajero`, MFA off | 201 / 409 / 422 |
+| POST | `/api/v1/auth/login` | público | Devuelve access (15m) + refresh (7d) | 200 / 401 / 423 / 428 |
+| POST | `/api/v1/auth/refresh` | refresh token en body | Renueva ambos tokens | 200 / 401 |
+| GET  | `/api/v1/auth/me` | Bearer access | Perfil del usuario | 200 / 401 |
+| PUT  | `/api/v1/auth/me` | Bearer access | Actualiza `nombre`, `password`, `telefono` | 200 / 401 / 422 |
+| POST | `/api/v1/auth/mfa/setup` | Bearer access | Genera secret base32 (32 chars) + `otpauth://` URI | 200 / 401 |
+| POST | `/api/v1/auth/mfa/verify` | Bearer access | Verifica TOTP (window ±30s) y activa MFA | 200 / 400 / 401 |
+
+> Roles BD `viajero|admin_hotel|admin_plataforma` se mapean a `traveler|hotel_admin|platform_admin` al firmar el JWT (claim `role`).
 
 ## Arquitectura — Reglas obligatorias
 
@@ -216,3 +238,21 @@ docs/
 - SQL raw si SQLAlchemy ORM lo resuelve
 - DELETE físico — usar soft delete (`activo = False`)
 - SQLite en producción
+
+## Lecciones aprendidas (cross-servicio)
+
+Aplicables a cualquier microservicio del monorepo:
+
+- **Direct VPC egress > VPC connector**: más performante, menos infra. user-services y los
+  PMS services usan Direct VPC con `--network=travelhub-vpc --subnet=subnet-services`.
+- **Cloud SQL via PSA + Direct VPC**: el primer cold-start de un servicio nuevo puede tardar
+  en establecer la primera conexión TCP por warming del peering. Subsequent revisions OK.
+- **Tag `data-layer`** es requerido en VMs custom (Kafka VM en subnet-data) para que aplique
+  la firewall rule `fw-allow-services-to-data`. Sin este tag, default-deny bloquea el tráfico.
+- **asyncpg < 0.30** tiene bug de SSL handshake que cuelga sobre Cloud Run direct VPC.
+  Solución: bump a 0.30+ y `?ssl=disable` en URL (ya está cifrado por GCP en private IP).
+- **Migraciones en PROD via Cloud Run Job** (no Cloud Build) — Cloud Build no tiene VPC.
+- **Cloud Deploy primer release** salta canary phases automáticamente (esperado, no es bug).
+  Siguientes releases hacen 10→50→100 con verify y approval.
+- **IAM roles del SA pueden desaparecer** (¿org policy / IaC drift?) — si el deploy falla
+  con `Permission denied`, re-ejecutar el binding correspondiente.

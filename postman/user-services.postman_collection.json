@@ -35,6 +35,40 @@
                   "  const json = pm.response.json();",
                   "  pm.expect(json.status).to.eql('healthy');",
                   "  pm.expect(json.service).to.eql('user-services');",
+                  "  pm.expect(json).to.have.property('version');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "JWKS (clave publica)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/.well-known/jwks.json",
+              "host": ["{{base_url}}"],
+              "path": [".well-known", "jwks.json"]
+            },
+            "description": "Expone la clave publica RS256 (kid travelhub-key-1) usada por el API Gateway para validar JWTs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve un set JWKS valido', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('keys');",
+                  "  pm.expect(json.keys).to.be.an('array').that.is.not.empty;",
+                  "  const k = json.keys[0];",
+                  "  pm.expect(k.kty).to.eql('RSA');",
+                  "  pm.expect(k.alg).to.eql('RS256');",
+                  "  pm.expect(k.kid).to.eql('travelhub-key-1');",
                   "});"
                 ],
                 "type": "text/javascript"
