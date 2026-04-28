@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 
 class UserRegisterRequest(BaseModel):
@@ -13,6 +14,8 @@ class UserRegisterRequest(BaseModel):
     pais: str | None = None
     idioma: str = "es"
     moneda_preferida: str = "USD"
+    solicita_rol: Literal["admin_hotel"] | None = None
+    hotel_id_solicitado: uuid.UUID | None = None
 
 
 class UserLoginRequest(BaseModel):
@@ -43,6 +46,9 @@ class UserResponse(BaseModel):
     moneda_preferida: str
     mfa_activo: bool
     rol: str
+    hotel_id: uuid.UUID | None = None
+    solicita_rol: str | None = None
+    hotel_id_solicitado: uuid.UUID | None = None
     fecha_registro: datetime
 
     model_config = {"from_attributes": True}
@@ -65,3 +71,29 @@ class MFAVerifyRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class PromoteUserRequest(BaseModel):
+    email: EmailStr | None = None
+    user_id: uuid.UUID | None = None
+    rol: Literal["admin_hotel"]
+    hotel_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def validate(self) -> "PromoteUserRequest":
+        if bool(self.email) == bool(self.user_id):
+            raise ValueError("Debe proporcionar exactamente uno de: email o user_id")
+        if self.rol == "admin_hotel" and self.hotel_id is None:
+            raise ValueError("hotel_id es obligatorio cuando rol es admin_hotel")
+        return self
+
+
+class PromotionRequestResponse(BaseModel):
+    id: uuid.UUID
+    email: str
+    nombre: str
+    solicita_rol: str
+    hotel_id_solicitado: uuid.UUID | None
+    fecha_registro: datetime
+
+    model_config = {"from_attributes": True}

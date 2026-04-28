@@ -100,6 +100,7 @@ app/
 ├── models/user.py       # SQLAlchemy User (incluye hotel_id)
 ├── schemas/user.py      # Pydantic request/response
 ├── routers/auth.py      # Endpoints HTTP (sin lógica de negocio)
+├── routers/admin.py     # Endpoints admin (solicitudes / promocion de rol)
 ├── services/auth_service.py  # Toda la lógica de negocio + mapeo de roles
 ├── middleware/auth_chain.py  # Chain of Responsibility: RateLimit → Token → IPValidation → RBAC → MFA
 └── utils/
@@ -112,6 +113,7 @@ tests/
 ├── test_login.py        # W08
 ├── test_auth_chain.py   # AH008
 ├── test_mfa.py          # MFA
+├── test_promotion.py    # Solicitud + promocion de rol admin_hotel
 └── test_health.py
 .github/workflows/
 └── ci.yml               # Pipeline CI/CD (tests, lint, deploy dev/prod)
@@ -135,13 +137,15 @@ Prefijo: `/api/v1`. Auth vía `Authorization: Bearer <access_token>` (o `X-Forwa
 |---|---|---|---|---|
 | GET  | `/health` | público | Health check `{status, service, version}` | 200 |
 | GET  | `/.well-known/jwks.json` | público | JWKS RS256 (kid `travelhub-key-1`) | 200 |
-| POST | `/api/v1/auth/register` | público | Crea usuario rol `viajero`, MFA off | 201 / 409 / 422 |
+| POST | `/api/v1/auth/register` | público | Crea usuario rol `viajero`, MFA off. Acepta opcionalmente `solicita_rol="admin_hotel"` y `hotel_id_solicitado` para flujo de elevacion | 201 / 409 / 422 |
 | POST | `/api/v1/auth/login` | público | Devuelve access (15m) + refresh (7d) | 200 / 401 / 423 / 428 |
 | POST | `/api/v1/auth/refresh` | refresh token en body | Renueva ambos tokens | 200 / 401 |
 | GET  | `/api/v1/auth/me` | Bearer access | Perfil del usuario | 200 / 401 |
 | PUT  | `/api/v1/auth/me` | Bearer access | Actualiza `nombre`, `password`, `telefono` | 200 / 401 / 422 |
 | POST | `/api/v1/auth/mfa/setup` | Bearer access | Genera secret base32 (32 chars) + `otpauth://` URI | 200 / 401 |
 | POST | `/api/v1/auth/mfa/verify` | Bearer access | Verifica TOTP (window ±30s) y activa MFA | 200 / 400 / 401 |
+| GET  | `/api/v1/admin/promotion-requests` | Bearer access (`platform_admin`) | Lista usuarios con solicitud pendiente de elevacion (`solicita_rol IS NOT NULL`) | 200 / 401 / 403 |
+| POST | `/api/v1/admin/users/promote` | Bearer access (`platform_admin`) | Eleva un usuario a `admin_hotel` (por `email` o `user_id`) y le asigna `hotel_id` | 200 / 401 / 403 / 404 / 422 |
 
 > Roles BD `viajero|admin_hotel|admin_plataforma` se mapean a `traveler|hotel_admin|platform_admin` al firmar el JWT (claim `role`).
 
@@ -167,6 +171,14 @@ Prefijo: `/api/v1`. Auth vía `Authorization: Bearer <access_token>` (o `X-Forwa
 - Email y username únicos (409 si duplicado)
 - Rol default: `viajero`, MFA default: `False`
 - Nunca retornar `hashed_password` ni `mfa_secret` en responses
+- Campos opcionales `solicita_rol` (solo acepta `"admin_hotel"`) y `hotel_id_solicitado` para que el usuario pida elevacion. **No** cambian su `rol` ni su JWT — solo dejan metadata para que el `platform_admin` apruebe luego
+
+### Solicitud y promocion de rol (admin_hotel)
+- Flujo: usuario se registra con `solicita_rol="admin_hotel"` → queda como `viajero` con la solicitud guardada → `platform_admin` valida out-of-band → llama `POST /api/v1/admin/users/promote` que setea `rol`, `hotel_id` y limpia los campos de solicitud
+- Endpoint de promocion acepta **`email` XOR `user_id`** (uno y solo uno). Si `rol="admin_hotel"`, `hotel_id` es obligatorio
+- El JWT del usuario promovido **no se refresca automaticamente** — debe hacer logout/login (o `/refresh`) para que su nuevo token diga `hotel_admin`
+- Los endpoints `/api/v1/admin/*` estan protegidos por `require_roles(["platform_admin"])`. El `platform_admin` inicial debe sembrarse manualmente en BD (no hay endpoint para crearlo)
+- Shortcut de emergencia/demo (cuando no hay `platform_admin` logueado): `UPDATE users SET rol='admin_hotel', hotel_id='<uuid>', solicita_rol=NULL, hotel_id_solicitado=NULL WHERE email='<email>';`
 
 ### Login
 - Verificar lockout (`locked_until`) ANTES de verificar password
@@ -205,6 +217,7 @@ Prefijo: `/api/v1`. Auth vía `Authorization: Bearer <access_token>` (o `X-Forwa
 | 401 | Credenciales / token inválido o expirado |
 | 403 | Rol insuficiente (RBAC) |
 | 409 | Email/username duplicado |
+| 404 | Usuario a promover no existe |
 | 423 | Cuenta bloqueada |
 | 428 | Código MFA requerido |
 

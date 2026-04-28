@@ -36,6 +36,10 @@ class User(Base):
     rol: Mapped[str] = mapped_column(String(50), nullable=False, default="viajero")
     hotel_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
 
+    # Solicitud de elevacion de rol (pendiente de aprobacion por platform_admin)
+    solicita_rol: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    hotel_id_solicitado: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+
     # Auditoria
     activo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     fecha_registro: Mapped[datetime] = mapped_column(
