@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import OperationalError
 
 from app.database import Base, engine
-from app.routers import auth
+from app.routers import admin, auth
 from app.utils.rsa_keys import get_jwks
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 
 @app.exception_handler(OperationalError)

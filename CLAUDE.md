@@ -59,9 +59,14 @@ Pipeline en `.github/workflows/ci.yml`. Auth vía **Workload Identity Federation
   - PROD: `assertion.repository=='ecruzs-uniandes/miso-travelhub-user-services' && assertion.ref=='refs/heads/main'`
 - **Service Account**: `github-deploy@<PROJECT>.iam.gserviceaccount.com` por ambiente
 
-### Migraciones en PROD
+### Migraciones en CI
 
-Cloud Build no tiene acceso al VPC privado, por lo que las migraciones en prod corren como **Cloud Run Job** (`user-services-migrate`) con VPC connector `prod-travelhub-connector`. El job se crea/ejecuta en cada release desde el `ci.yml`. En DEV, también via Cloud Run Job o Cloud Build (ambos con VPC).
+Cloud Build no tiene acceso al VPC privado, por lo que las migraciones corren como **Cloud Run Job** (`user-services-migrate`) con VPC connector. El job se crea/ejecuta en cada push desde `ci.yml`, antes del `gcloud run deploy`:
+
+- **DEV** (push a `feature/*` o `develop`): VPC connector `travelhub-connector`, secret `DATABASE_URL_SYNC` del proyecto `gen-lang-client-0930444414`.
+- **PROD** (push a `main`): VPC connector `prod-travelhub-connector`, secret `DATABASE_URL_SYNC` del proyecto `travelhub-prod-492116`.
+
+Si el job falla, el deploy se aborta (la nueva revisión no llega a recibir tráfico). Para correr la migración manualmente fuera del pipeline: `./deploy/deploy.sh dev --only-migrate` o `./deploy/deploy.sh prod --only-migrate`.
 
 ### Cloud Deploy (PROD)
 
@@ -100,6 +105,7 @@ app/
 ├── models/user.py       # SQLAlchemy User (incluye hotel_id)
 ├── schemas/user.py      # Pydantic request/response
 ├── routers/auth.py      # Endpoints HTTP (sin lógica de negocio)
+├── routers/admin.py     # Endpoints admin (solicitudes / promocion de rol)
 ├── services/auth_service.py  # Toda la lógica de negocio + mapeo de roles
 ├── middleware/auth_chain.py  # Chain of Responsibility: RateLimit → Token → IPValidation → RBAC → MFA
 └── utils/
@@ -112,6 +118,7 @@ tests/
 ├── test_login.py        # W08
 ├── test_auth_chain.py   # AH008
 ├── test_mfa.py          # MFA
+├── test_promotion.py    # Solicitud + promocion de rol admin_hotel
 └── test_health.py
 .github/workflows/
 └── ci.yml               # Pipeline CI/CD (tests, lint, deploy dev/prod)
@@ -121,7 +128,31 @@ k8s/
 └── service-prod.yaml    # Manifiesto Cloud Run producción (env vars + secrets)
 docs/
 └── gcp-setup.md         # Guía de configuración GCP por primera vez
+postman/
+├── user-services.postman_collection.json
+├── user-services.postman_environment.json      # entorno local (localhost:8000)
+└── user-services.postman_environment.dev.json  # entorno DEV Cloud Run
 ```
+
+## Endpoints HTTP
+
+Prefijo: `/api/v1`. Auth vía `Authorization: Bearer <access_token>` (o `X-Forwarded-Authorization` cuando viene del gateway).
+
+| Método | Path | Auth | Descripción | Códigos |
+|---|---|---|---|---|
+| GET  | `/health` | público | Health check `{status, service, version}` | 200 |
+| GET  | `/.well-known/jwks.json` | público | JWKS RS256 (kid `travelhub-key-1`) | 200 |
+| POST | `/api/v1/auth/register` | público | Crea usuario rol `viajero`, MFA off. Acepta opcionalmente `solicita_rol="admin_hotel"` y `hotel_id_solicitado` para flujo de elevacion | 201 / 409 / 422 |
+| POST | `/api/v1/auth/login` | público | Devuelve access (15m) + refresh (7d) | 200 / 401 / 423 / 428 |
+| POST | `/api/v1/auth/refresh` | refresh token en body | Renueva ambos tokens | 200 / 401 |
+| GET  | `/api/v1/auth/me` | Bearer access | Perfil del usuario | 200 / 401 |
+| PUT  | `/api/v1/auth/me` | Bearer access | Actualiza `nombre`, `password`, `telefono` | 200 / 401 / 422 |
+| POST | `/api/v1/auth/mfa/setup` | Bearer access | Genera secret base32 (32 chars) + `otpauth://` URI | 200 / 401 |
+| POST | `/api/v1/auth/mfa/verify` | Bearer access | Verifica TOTP (window ±30s) y activa MFA | 200 / 400 / 401 |
+| GET  | `/api/v1/admin/promotion-requests` | Bearer access (`platform_admin`) | Lista usuarios con solicitud pendiente de elevacion (`solicita_rol IS NOT NULL`) | 200 / 401 / 403 |
+| POST | `/api/v1/admin/users/promote` | Bearer access (`platform_admin`) | Eleva un usuario a `admin_hotel` (por `email` o `user_id`) y le asigna `hotel_id` | 200 / 401 / 403 / 404 / 422 |
+
+> Roles BD `viajero|admin_hotel|admin_plataforma` se mapean a `traveler|hotel_admin|platform_admin` al firmar el JWT (claim `role`).
 
 ## Arquitectura — Reglas obligatorias
 
@@ -145,6 +176,14 @@ docs/
 - Email y username únicos (409 si duplicado)
 - Rol default: `viajero`, MFA default: `False`
 - Nunca retornar `hashed_password` ni `mfa_secret` en responses
+- Campos opcionales `solicita_rol` (solo acepta `"admin_hotel"`) y `hotel_id_solicitado` para que el usuario pida elevacion. **No** cambian su `rol` ni su JWT — solo dejan metadata para que el `platform_admin` apruebe luego
+
+### Solicitud y promocion de rol (admin_hotel)
+- Flujo: usuario se registra con `solicita_rol="admin_hotel"` → queda como `viajero` con la solicitud guardada → `platform_admin` valida out-of-band → llama `POST /api/v1/admin/users/promote` que setea `rol`, `hotel_id` y limpia los campos de solicitud
+- Endpoint de promocion acepta **`email` XOR `user_id`** (uno y solo uno). Si `rol="admin_hotel"`, `hotel_id` es obligatorio
+- El JWT del usuario promovido **no se refresca automaticamente** — debe hacer logout/login (o `/refresh`) para que su nuevo token diga `hotel_admin`
+- Los endpoints `/api/v1/admin/*` estan protegidos por `require_roles(["platform_admin"])`. El `platform_admin` inicial debe sembrarse manualmente en BD (no hay endpoint para crearlo)
+- Shortcut de emergencia/demo (cuando no hay `platform_admin` logueado): `UPDATE users SET rol='admin_hotel', hotel_id='<uuid>', solicita_rol=NULL, hotel_id_solicitado=NULL WHERE email='<email>';`
 
 ### Login
 - Verificar lockout (`locked_until`) ANTES de verificar password
@@ -183,6 +222,7 @@ docs/
 | 401 | Credenciales / token inválido o expirado |
 | 403 | Rol insuficiente (RBAC) |
 | 409 | Email/username duplicado |
+| 404 | Usuario a promover no existe |
 | 423 | Cuenta bloqueada |
 | 428 | Código MFA requerido |
 
@@ -216,3 +256,21 @@ docs/
 - SQL raw si SQLAlchemy ORM lo resuelve
 - DELETE físico — usar soft delete (`activo = False`)
 - SQLite en producción
+
+## Lecciones aprendidas (cross-servicio)
+
+Aplicables a cualquier microservicio del monorepo:
+
+- **Direct VPC egress > VPC connector**: más performante, menos infra. user-services y los
+  PMS services usan Direct VPC con `--network=travelhub-vpc --subnet=subnet-services`.
+- **Cloud SQL via PSA + Direct VPC**: el primer cold-start de un servicio nuevo puede tardar
+  en establecer la primera conexión TCP por warming del peering. Subsequent revisions OK.
+- **Tag `data-layer`** es requerido en VMs custom (Kafka VM en subnet-data) para que aplique
+  la firewall rule `fw-allow-services-to-data`. Sin este tag, default-deny bloquea el tráfico.
+- **asyncpg < 0.30** tiene bug de SSL handshake que cuelga sobre Cloud Run direct VPC.
+  Solución: bump a 0.30+ y `?ssl=disable` en URL (ya está cifrado por GCP en private IP).
+- **Migraciones en PROD via Cloud Run Job** (no Cloud Build) — Cloud Build no tiene VPC.
+- **Cloud Deploy primer release** salta canary phases automáticamente (esperado, no es bug).
+  Siguientes releases hacen 10→50→100 con verify y approval.
+- **IAM roles del SA pueden desaparecer** (¿org policy / IaC drift?) — si el deploy falla
+  con `Permission denied`, re-ejecutar el binding correspondiente.

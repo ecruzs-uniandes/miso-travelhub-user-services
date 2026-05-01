@@ -11,6 +11,8 @@ from app.models.user import User
 from app.schemas.user import (
     MessageResponse,
     MFASetupResponse,
+    PromoteUserRequest,
+    PromotionRequestResponse,
     TokenResponse,
     UserRegisterRequest,
     UserResponse,
@@ -55,12 +57,21 @@ async def register_user(request: UserRegisterRequest, db: AsyncSession) -> UserR
         pais=request.pais,
         idioma=request.idioma,
         moneda_preferida=request.moneda_preferida,
+        solicita_rol=request.solicita_rol,
+        hotel_id_solicitado=request.hotel_id_solicitado,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
-    logger.info("Usuario registrado: %s", user.email)
+    if user.solicita_rol:
+        logger.info(
+            "Usuario registrado con solicitud de rol %s: %s",
+            user.solicita_rol,
+            user.email,
+        )
+    else:
+        logger.info("Usuario registrado: %s", user.email)
     return UserResponse.model_validate(user)
 
 
@@ -220,6 +231,46 @@ async def setup_mfa(user_id: str, db: AsyncSession) -> MFASetupResponse:
     qr_uri = f"otpauth://totp/TravelHub:{user.email}?secret={secret}&issuer=TravelHub"
     logger.info("MFA configurado para: %s", user.email)
     return MFASetupResponse(secret=secret, qr_uri=qr_uri)
+
+
+async def list_promotion_requests(
+    db: AsyncSession,
+) -> list[PromotionRequestResponse]:
+    result = await db.execute(
+        select(User).where(User.solicita_rol.is_not(None), User.activo.is_(True))
+    )
+    users = result.scalars().all()
+    return [PromotionRequestResponse.model_validate(u) for u in users]
+
+
+async def promote_user(
+    request: PromoteUserRequest, admin_id: str, db: AsyncSession
+) -> UserResponse:
+    if request.user_id is not None:
+        result = await db.execute(select(User).where(User.id == request.user_id))
+    else:
+        result = await db.execute(select(User).where(User.email == request.email))
+
+    user = result.scalar_one_or_none()
+    if not user or not user.activo:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    user.rol = request.rol
+    user.hotel_id = request.hotel_id
+    user.solicita_rol = None
+    user.hotel_id_solicitado = None
+
+    await db.commit()
+    await db.refresh(user)
+
+    logger.info(
+        "platform_admin %s elevo a %s a rol %s (hotel_id=%s)",
+        admin_id,
+        user.email,
+        user.rol,
+        user.hotel_id,
+    )
+    return UserResponse.model_validate(user)
 
 
 async def verify_mfa(user_id: str, totp_code: str, db: AsyncSession) -> MessageResponse:

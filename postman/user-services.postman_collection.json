@@ -35,6 +35,40 @@
                   "  const json = pm.response.json();",
                   "  pm.expect(json.status).to.eql('healthy');",
                   "  pm.expect(json.service).to.eql('user-services');",
+                  "  pm.expect(json).to.have.property('version');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "JWKS (clave publica)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/.well-known/jwks.json",
+              "host": ["{{base_url}}"],
+              "path": [".well-known", "jwks.json"]
+            },
+            "description": "Expone la clave publica RS256 (kid travelhub-key-1) usada por el API Gateway para validar JWTs."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve un set JWKS valido', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json).to.have.property('keys');",
+                  "  pm.expect(json.keys).to.be.an('array').that.is.not.empty;",
+                  "  const k = json.keys[0];",
+                  "  pm.expect(k.kty).to.eql('RSA');",
+                  "  pm.expect(k.alg).to.eql('RS256');",
+                  "  pm.expect(k.kid).to.eql('travelhub-key-1');",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -678,6 +712,350 @@
                   "pm.test('Status 400', () => pm.response.to.have.status(400));",
                   "pm.test('MFA no configurado', () => {",
                   "  pm.expect(pm.response.json().detail).to.include('MFA no configurado');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin - Promocion de rol (admin_hotel)",
+      "description": "Flujo de elevacion de rol a admin_hotel.\n\n**Pre-requisito:** sembrar manualmente en BD un usuario con rol `admin_plataforma`:\n```sql\nINSERT INTO users (id, email, username, nombre, hashed_password, rol, idioma, moneda_preferida, mfa_activo, failed_login_attempts, activo, fecha_registro, fecha_actualizacion)\nVALUES (gen_random_uuid(), 'platform@travelhub.app', 'platformadmin', 'Platform Admin', '<bcrypt_hash>', 'admin_plataforma', 'es', 'USD', false, 0, true, now(), now());\n```\n\n**Flujo:**\n1. Register hotelero (con solicitud de admin_hotel)\n2. Login como platform_admin\n3. List promotion requests\n4. Promote (por email o user_id)\n5. Re-login del hotelero — su JWT ahora dice `hotel_admin`",
+      "item": [
+        {
+          "name": "1. Register hotelero (con solicitud admin_hotel)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hotel_admin_email}}\",\n  \"username\": \"hotelero01\",\n  \"nombre\": \"Maria Hotelera\",\n  \"password\": \"{{user_password}}\",\n  \"telefono\": \"+57 320 1112233\",\n  \"pais\": \"CO\",\n  \"solicita_rol\": \"admin_hotel\",\n  \"hotel_id_solicitado\": \"{{hotel_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
+            },
+            "description": "Registro con solicitud de elevacion. El usuario queda como `viajero` con `solicita_rol` y `hotel_id_solicitado` guardados como metadata. No afecta su JWT ni RBAC hasta que un platform_admin lo apruebe."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Rol sigue siendo viajero', () => {",
+                  "  pm.expect(pm.response.json().rol).to.eql('viajero');",
+                  "});",
+                  "pm.test('Solicitud guardada', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.solicita_rol).to.eql('admin_hotel');",
+                  "  pm.expect(json.hotel_id_solicitado).to.eql(pm.environment.get('hotel_id'));",
+                  "});",
+                  "pm.environment.set('hotel_admin_user_id', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Login como platform_admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{platform_admin_email}}\",\n  \"password\": \"{{platform_admin_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "Requiere que el usuario `admin_plataforma` exista en BD (ver pre-requisito de la carpeta)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Token guardado en admin_access_token', () => {",
+                  "  pm.expect(pm.response.json()).to.have.property('access_token');",
+                  "});",
+                  "pm.environment.set('admin_access_token', pm.response.json().access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. List promotion requests",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/promotion-requests",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "promotion-requests"]
+            },
+            "description": "Lista todos los usuarios activos con `solicita_rol IS NOT NULL`. Solo accesible para `platform_admin`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Devuelve un array', () => {",
+                  "  pm.expect(pm.response.json()).to.be.an('array');",
+                  "});",
+                  "pm.test('Incluye al hotelero registrado', () => {",
+                  "  const items = pm.response.json();",
+                  "  const found = items.find(u => u.email === pm.environment.get('hotel_admin_email'));",
+                  "  pm.expect(found, 'hotelero no encontrado en pendientes').to.not.be.undefined;",
+                  "  pm.expect(found.solicita_rol).to.eql('admin_hotel');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Promote por email",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hotel_admin_email}}\",\n  \"rol\": \"admin_hotel\",\n  \"hotel_id\": \"{{hotel_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/promote",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "promote"]
+            },
+            "description": "Eleva al usuario a `admin_hotel` y le asigna `hotel_id`. Limpia los campos `solicita_rol` y `hotel_id_solicitado`.\n\nAlternativa: pasar `user_id` en lugar de `email` (uno y solo uno)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Rol actualizado a admin_hotel', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.rol).to.eql('admin_hotel');",
+                  "  pm.expect(json.hotel_id).to.eql(pm.environment.get('hotel_id'));",
+                  "});",
+                  "pm.test('Solicitud limpiada', () => {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.solicita_rol).to.be.null;",
+                  "  pm.expect(json.hotel_id_solicitado).to.be.null;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Re-login hotelero (JWT ahora dice hotel_admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hotel_admin_email}}\",\n  \"password\": \"{{user_password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            },
+            "description": "El JWT del hotelero NO se actualiza solo con la promocion — debe re-loguearse para obtener un access_token con `role=hotel_admin`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('access_token', pm.response.json().access_token);",
+                  "pm.environment.set('refresh_token', pm.response.json().refresh_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - Sin token admin (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hotel_admin_email}}\",\n  \"rol\": \"admin_hotel\",\n  \"hotel_id\": \"{{hotel_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/promote",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "promote"]
+            },
+            "description": "Llamar el endpoint con un token que NO sea de `platform_admin` debe retornar 403."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403', () => pm.response.to.have.status(403));",
+                  "pm.test('Mensaje rol insuficiente', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('Rol insuficiente');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - Sin email ni user_id (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rol\": \"admin_hotel\",\n  \"hotel_id\": \"{{hotel_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/promote",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "promote"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - email y user_id juntos (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hotel_admin_email}}\",\n  \"user_id\": \"{{hotel_admin_user_id}}\",\n  \"rol\": \"admin_hotel\",\n  \"hotel_id\": \"{{hotel_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/promote",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "promote"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - admin_hotel sin hotel_id (422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{hotel_admin_email}}\",\n  \"rol\": \"admin_hotel\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/promote",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "promote"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 422', () => pm.response.to.have.status(422));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error - Usuario inexistente (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ghost@nowhere.com\",\n  \"rol\": \"admin_hotel\",\n  \"hotel_id\": \"{{hotel_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/users/promote",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "admin", "users", "promote"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));",
+                  "pm.test('Mensaje usuario no encontrado', () => {",
+                  "  pm.expect(pm.response.json().detail).to.include('no encontrado');",
                   "});"
                 ],
                 "type": "text/javascript"
