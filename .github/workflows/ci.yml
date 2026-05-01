@@ -116,6 +116,21 @@ jobs:
           docker push ${{ env.DEV_IMAGE }}:${{ github.sha }}
           docker push ${{ env.DEV_IMAGE }}:latest
 
+      - name: Run Alembic migrations (Cloud Run Job con VPC)
+        run: |
+          gcloud run jobs deploy user-services-migrate \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --image=${{ env.DEV_IMAGE }}:${{ github.sha }} \
+            --vpc-connector=travelhub-connector \
+            --set-secrets=DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest \
+            --command=sh --args="-c,cd /app && alembic upgrade head" \
+            --max-retries=1 --task-timeout=300 --quiet
+          gcloud run jobs execute user-services-migrate \
+            --project=${{ env.DEV_PROJECT_ID }} \
+            --region=${{ env.REGION }} \
+            --wait --quiet
+
       - name: Deploy to Cloud Run (dev)
         run: |
           gcloud run deploy user-services \

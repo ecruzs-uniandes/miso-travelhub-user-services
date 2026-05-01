@@ -272,17 +272,22 @@ Registra un nuevo usuario en la plataforma.
   "telefono": "+57 300 1234567",
   "pais": "CO",
   "idioma": "es",
-  "moneda_preferida": "COP"
+  "moneda_preferida": "COP",
+  "solicita_rol": "admin_hotel",
+  "hotel_id_solicitado": "11111111-1111-1111-1111-111111111111"
 }
 ```
 
 Los campos `telefono`, `pais`, `idioma` y `moneda_preferida` son opcionales. Los valores por defecto de `idioma` y `moneda_preferida` son `"es"` y `"USD"` respectivamente.
+
+Los campos `solicita_rol` y `hotel_id_solicitado` tambien son opcionales y se utilizan para el flujo de elevacion a `admin_hotel`. Si se envian, el usuario queda registrado con rol `viajero` (sin afectar su JWT ni el RBAC) y deja la solicitud pendiente para que un `admin_plataforma` la apruebe via `POST /api/v1/admin/users/promote`. Solo se acepta `"admin_hotel"` como valor de `solicita_rol`.
 
 **Validaciones:**
 - `email`: formato valido (Pydantic EmailStr)
 - `username`: minimo 3 caracteres
 - `password`: minimo 8 caracteres
 - `nombre`: minimo 1 caracter
+- `solicita_rol`: si se envia, debe ser exactamente `"admin_hotel"`
 
 **Response 201:**
 ```json
@@ -297,6 +302,9 @@ Los campos `telefono`, `pais`, `idioma` y `moneda_preferida` son opcionales. Los
   "moneda_preferida": "COP",
   "mfa_activo": false,
   "rol": "viajero",
+  "hotel_id": null,
+  "solicita_rol": "admin_hotel",
+  "hotel_id_solicitado": "11111111-1111-1111-1111-111111111111",
   "fecha_registro": "2026-03-28T00:00:00Z"
 }
 ```
@@ -475,6 +483,105 @@ La verificacion acepta una ventana de validez de +/- 30 segundos (`valid_window=
 
 ---
 
+### Endpoints Admin (rol `admin_plataforma`)
+
+Estos endpoints permiten al `admin_plataforma` revisar y aprobar solicitudes de elevacion de rol generadas por usuarios al registrarse con `solicita_rol`. La proteccion se hace con `require_roles(["platform_admin"])`, que monta la cadena de autenticacion estandar y exige que el claim `role` del JWT sea exactamente `platform_admin` (mapeado desde `admin_plataforma` en BD). Cualquier otro rol obtiene 403.
+
+> **Pre-requisito:** debe existir al menos un usuario con `rol='admin_plataforma'` en la BD. No hay endpoint para crearlo — se siembra manualmente con un INSERT (o un script de bootstrap) y luego ese usuario se loguea normalmente via `/api/v1/auth/login` para obtener su `access_token`.
+
+#### GET /api/v1/admin/promotion-requests
+
+Lista todos los usuarios activos que tienen una solicitud pendiente de elevacion de rol (`solicita_rol IS NOT NULL`).
+
+**Headers:**
+```
+Authorization: Bearer <access_token de admin_plataforma>
+```
+
+**Response 200:**
+```json
+[
+  {
+    "id": "uuid",
+    "email": "hotelero@example.com",
+    "nombre": "Maria Hotelera",
+    "solicita_rol": "admin_hotel",
+    "hotel_id_solicitado": "11111111-1111-1111-1111-111111111111",
+    "fecha_registro": "2026-04-27T10:00:00Z"
+  }
+]
+```
+
+**Errores:**
+
+| Codigo | Condicion |
+|--------|-----------|
+| 401 | Token no proporcionado, invalido, expirado, o de tipo incorrecto |
+| 403 | El rol del JWT no es `platform_admin` |
+
+---
+
+#### POST /api/v1/admin/users/promote
+
+Eleva el rol de un usuario a `admin_hotel` y le asigna el `hotel_id` correspondiente. Es el unico endpoint que escribe el campo `rol` despues del registro. Limpia automaticamente los campos `solicita_rol` y `hotel_id_solicitado` del usuario promovido.
+
+El usuario destino se identifica por `email` **o** `user_id` — debe enviarse exactamente uno de los dos (no ambos, no ninguno). Esto permite usar el endpoint tanto desde una UI que lista pendientes (con `user_id`) como desde un flujo manual donde solo se conoce el email.
+
+**Headers:**
+```
+Authorization: Bearer <access_token de admin_plataforma>
+Content-Type: application/json
+```
+
+**Request Body (por email):**
+```json
+{
+  "email": "hotelero@example.com",
+  "rol": "admin_hotel",
+  "hotel_id": "11111111-1111-1111-1111-111111111111"
+}
+```
+
+**Request Body (por user_id):**
+```json
+{
+  "user_id": "uuid-del-usuario",
+  "rol": "admin_hotel",
+  "hotel_id": "11111111-1111-1111-1111-111111111111"
+}
+```
+
+**Validaciones:**
+- `rol`: solo se acepta `"admin_hotel"`
+- `hotel_id`: obligatorio cuando `rol` es `"admin_hotel"`
+- `email` XOR `user_id`: debe enviarse exactamente uno
+
+**Response 200:** misma estructura que la respuesta de registro, ya con los campos actualizados:
+```json
+{
+  "id": "uuid",
+  "email": "hotelero@example.com",
+  "rol": "admin_hotel",
+  "hotel_id": "11111111-1111-1111-1111-111111111111",
+  "solicita_rol": null,
+  "hotel_id_solicitado": null,
+  "...": "..."
+}
+```
+
+**Errores:**
+
+| Codigo | Condicion |
+|--------|-----------|
+| 401 | Token no proporcionado, invalido, expirado, o de tipo incorrecto |
+| 403 | El rol del JWT no es `platform_admin` |
+| 404 | No existe un usuario activo con el `email` o `user_id` indicado |
+| 422 | Faltan ambos identificadores, se enviaron los dos, o falta `hotel_id` cuando `rol=admin_hotel` |
+
+> **Importante:** el JWT del usuario promovido **no se invalida ni se actualiza automaticamente**. Mientras conserve el access_token anterior, su `role` seguira siendo `traveler` en el claim. Para empezar a operar como `hotel_admin` debe re-loguearse via `/api/v1/auth/login` o renovar via `/api/v1/auth/refresh`.
+
+---
+
 ### Infraestructura
 
 #### GET /health
@@ -550,6 +657,17 @@ Permisos por rol:
 
 El `RBACFilter` en la cadena de autenticacion verifica que el rol del usuario (contenido en el JWT) este dentro de la lista de roles permitidos para el endpoint solicitado. El `MFAFilter` requiere `mfa_verified=true` para rutas `/payments` y `/admin`.
 
+#### Flujo de elevacion a `admin_hotel`
+
+El rol `admin_hotel` no se asigna en el registro publico. El proceso es:
+
+1. **Solicitud:** el usuario se registra via `POST /api/v1/auth/register` con `solicita_rol="admin_hotel"` y opcionalmente `hotel_id_solicitado`. Queda creado con `rol="viajero"` (su JWT, su RBAC y sus permisos son los de cualquier viajero) pero con metadata pendiente.
+2. **Validacion fuera de banda:** el `admin_plataforma` valida la legitimidad del hotel/usuario (contrato, KYC, contacto comercial, etc.) por canales propios.
+3. **Aprobacion:** el `admin_plataforma` llama `POST /api/v1/admin/users/promote` (protegido con `require_roles(["platform_admin"])`) indicando `email` o `user_id`, `rol="admin_hotel"` y el `hotel_id` definitivo. El servicio actualiza el rol y limpia los campos de solicitud.
+4. **Re-login:** el usuario promovido debe re-loguearse para que su nuevo `access_token` lleve `role="hotel_admin"`. El JWT anterior no se invalida automaticamente.
+
+Para listar las solicitudes pendientes existe `GET /api/v1/admin/promotion-requests`, igualmente restringido a `platform_admin`.
+
 ### MFA (Autenticacion Multifactor)
 
 El flujo de activacion de MFA consta de dos pasos:
@@ -584,6 +702,8 @@ Tabla `users`:
 | `locked_until` | TIMESTAMPTZ | nullable | Fecha limite de bloqueo |
 | `rol` | VARCHAR(50) | NOT NULL, default 'viajero' | Rol RBAC |
 | `hotel_id` | UUID | nullable | ID de hotel (solo para hotel_admin) |
+| `solicita_rol` | VARCHAR(50) | nullable | Rol que el usuario solicito al registrarse (pendiente de aprobacion). Solo `'admin_hotel'` |
+| `hotel_id_solicitado` | UUID | nullable | Hotel sugerido por el usuario al solicitar elevacion |
 | `activo` | BOOLEAN | NOT NULL, default TRUE | Soft delete |
 | `fecha_registro` | TIMESTAMPTZ | NOT NULL, auto | Fecha de creacion |
 | `fecha_actualizacion` | TIMESTAMPTZ | NOT NULL, auto | Fecha de ultima actualizacion |

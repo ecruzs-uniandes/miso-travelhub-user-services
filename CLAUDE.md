@@ -59,9 +59,14 @@ Pipeline en `.github/workflows/ci.yml`. Auth vía **Workload Identity Federation
   - PROD: `assertion.repository=='ecruzs-uniandes/miso-travelhub-user-services' && assertion.ref=='refs/heads/main'`
 - **Service Account**: `github-deploy@<PROJECT>.iam.gserviceaccount.com` por ambiente
 
-### Migraciones en PROD
+### Migraciones en CI
 
-Cloud Build no tiene acceso al VPC privado, por lo que las migraciones en prod corren como **Cloud Run Job** (`user-services-migrate`) con VPC connector `prod-travelhub-connector`. El job se crea/ejecuta en cada release desde el `ci.yml`. En DEV, también via Cloud Run Job o Cloud Build (ambos con VPC).
+Cloud Build no tiene acceso al VPC privado, por lo que las migraciones corren como **Cloud Run Job** (`user-services-migrate`) con VPC connector. El job se crea/ejecuta en cada push desde `ci.yml`, antes del `gcloud run deploy`:
+
+- **DEV** (push a `feature/*` o `develop`): VPC connector `travelhub-connector`, secret `DATABASE_URL_SYNC` del proyecto `gen-lang-client-0930444414`.
+- **PROD** (push a `main`): VPC connector `prod-travelhub-connector`, secret `DATABASE_URL_SYNC` del proyecto `travelhub-prod-492116`.
+
+Si el job falla, el deploy se aborta (la nueva revisión no llega a recibir tráfico). Para correr la migración manualmente fuera del pipeline: `./deploy/deploy.sh dev --only-migrate` o `./deploy/deploy.sh prod --only-migrate`.
 
 ### Cloud Deploy (PROD)
 
