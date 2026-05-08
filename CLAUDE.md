@@ -226,16 +226,31 @@ Prefijo: `/api/v1`. Auth vía `Authorization: Bearer <access_token>` (o `X-Forwa
 | 423 | Cuenta bloqueada |
 | 428 | Código MFA requerido |
 
-## Infraestructura desplegada (DEV)
+## Infraestructura desplegada
+
+### DEV (`gen-lang-client-0930444414`)
 
 | Capa | Recurso |
 |------|---------|
 | Cloud Run | `user-services` → `https://user-services-ridyy4wz4q-uc.a.run.app` |
 | API Gateway | `https://travelhub-gateway-1yvtqj7r.uc.gateway.dev` |
+| LB / dominio | `https://apitravelhubdev.site` (desde 2026-05-08) |
 | JWKS | `https://user-services-ridyy4wz4q-uc.a.run.app/.well-known/jwks.json` |
 | Cloud SQL | `travelhub-db` (PostgreSQL 15, IP privada `10.100.0.3`) |
 | VPC | `travelhub-vpc` con 3 subnets + VPC connector `travelhub-connector` |
-| Cloud Armor | `travelhub-security-policy` (WAF + rate limiting + geo-blocking) |
+| Cloud Armor | `travelhub-security-policy` (sin reglas activas — recursos legacy) |
+
+### PROD (`travelhub-prod-492116`)
+
+| Capa | Recurso |
+|------|---------|
+| Cloud Run | `user-services` → `https://user-services-qhweqfkejq-uc.a.run.app` |
+| API Gateway | `https://prod-travelhub-gateway-cfv1jc0r.uc.gateway.dev` |
+| LB / dominio | `https://apitravelhub.site` (desde 2026-05-08) |
+| JWKS | `https://user-services-qhweqfkejq-uc.a.run.app/.well-known/jwks.json` |
+| Cloud SQL | `prod-travelhub-db` (PostgreSQL 15, IP privada `10.200.0.3`) |
+| VPC | `prod-travelhub-vpc` con 3 subnets + VPC connector `prod-travelhub-connector` |
+| Cloud Armor | ❌ pendiente (cuota=0 en free trial billing) |
 
 ## Integración gateway ↔ backend
 
