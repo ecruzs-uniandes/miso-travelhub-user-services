@@ -3,6 +3,7 @@
 import pytest
 import pytest_asyncio
 
+from app.config import settings
 from app.models.user import User
 from app.utils.jwt_handler import create_access_token, create_refresh_token
 from app.utils.security import hash_password
@@ -46,7 +47,7 @@ async def test_refresh_valid_token_returns_200(async_client, test_user):
     assert "access_token" in data
     assert "refresh_token" in data
     assert data["token_type"] == "bearer"
-    assert data["expires_in"] == 900
+    assert data["expires_in"] == settings.JWT_ACCESS_TTL
 
 
 # --- Error cases ---

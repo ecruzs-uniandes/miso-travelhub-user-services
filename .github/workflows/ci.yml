@@ -142,16 +142,7 @@ jobs:
             --no-traffic \
             --min-instances=1 \
             --max-instances=10 \
-            --set-env-vars="\
-              ENVIRONMENT=production,\
-              DEBUG=true,\
-              JWT_ALGORITHM=RS256,\
-              JWT_ISSUER=https://auth.travelhub.app,\
-              JWT_AUDIENCE=travelhub-api,\
-              JWT_ACCESS_TTL=900,\
-              JWT_REFRESH_TTL=604800,\
-              RATE_LIMIT_REQUESTS=100,\
-              RATE_LIMIT_WINDOW_SECONDS=60" \
+            --set-env-vars="ENVIRONMENT=production,DEBUG=true" \
             --set-secrets="\
               DATABASE_URL=DATABASE_URL:latest,\
               DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,\
