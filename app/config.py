@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "RS256"
     JWT_ISSUER: str = "https://auth.travelhub.app"
     JWT_AUDIENCE: str = "travelhub-api"
-    JWT_ACCESS_TTL: int = 900
+    JWT_ACCESS_TTL: int = 86400
     JWT_REFRESH_TTL: int = 604800
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     BCRYPT_ROUNDS: int = 12
     MAX_LOGIN_ATTEMPTS: int = 5
