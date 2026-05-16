@@ -11,6 +11,7 @@ Topics que publica este servicio:
 Si KAFKA_ENABLED=false (local/tests), publish_event() loguea warning y
 retorna False. Nunca lanza excepción para no romper el flujo del caller.
 """
+
 import json
 import logging
 import uuid

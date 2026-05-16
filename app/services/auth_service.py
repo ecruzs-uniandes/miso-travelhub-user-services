@@ -18,12 +18,12 @@ from app.schemas.user import (
     UserResponse,
     UserUpdateRequest,
 )
+from app.services.kafka_producer import publish_user_event
 from app.utils.jwt_handler import (
     create_access_token,
     create_refresh_token,
     decode_token,
 )
-from app.services.kafka_producer import publish_user_event
 from app.utils.security import (
     generate_totp_secret,
     hash_password,
