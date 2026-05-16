@@ -49,6 +49,13 @@ spec:
                 secretKeyRef:
                   name: RSA_PRIVATE_KEY_B64
                   key: latest
+            # Kafka producer — publica eventos user.* a notification-services
+            - name: KAFKA_ENABLED
+              value: "true"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "10.20.3.3:9092"
+            - name: KAFKA_USER_EVENTS_TOPIC
+              value: "user-events"
           startupProbe:
             httpGet:
               path: /health

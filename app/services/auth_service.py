@@ -18,6 +18,7 @@ from app.schemas.user import (
     UserResponse,
     UserUpdateRequest,
 )
+from app.services.kafka_producer import publish_user_event
 from app.utils.jwt_handler import (
     create_access_token,
     create_refresh_token,
@@ -72,6 +73,20 @@ async def register_user(request: UserRegisterRequest, db: AsyncSession) -> UserR
         )
     else:
         logger.info("Usuario registrado: %s", user.email)
+
+    # Publicar evento user.welcome a Kafka (lo consume notification-services).
+    # try/except por defensa en profundidad: aunque publish_user_event ya tiene
+    # su propio try/except interno y devuelve False sin lanzar, lo envolvemos
+    # acá también para garantizar que un fallo de Kafka NUNCA rompa el registro.
+    try:
+        publish_user_event(
+            event_type="user.welcome",
+            user_id=str(user.id),
+            payload={"email": user.email, "full_name": user.nombre},
+        )
+    except Exception as exc:
+        logger.error("welcome_event_publish_failed user_id=%s error=%s", user.id, exc)
+
     return UserResponse.model_validate(user)
 
 

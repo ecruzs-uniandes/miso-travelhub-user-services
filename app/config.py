@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
 
+    # Kafka producer — publica eventos de usuario (user.welcome, etc.)
+    # hacia notification-services via topic user-events. En DEV: 10.10.3.3:9092
+    # En PROD: 10.20.3.3:9092. Local/tests: false (no produce, log warning).
+    KAFKA_ENABLED: bool = False
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_USER_EVENTS_TOPIC: str = "user-events"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
