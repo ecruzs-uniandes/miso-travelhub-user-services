@@ -142,7 +142,8 @@ jobs:
             --no-traffic \
             --min-instances=1 \
             --max-instances=10 \
-            --set-env-vars="ENVIRONMENT=production,DEBUG=true" \
+            --vpc-connector=travelhub-connector \
+            --set-env-vars="ENVIRONMENT=production,DEBUG=true,KAFKA_ENABLED=true,KAFKA_BOOTSTRAP_SERVERS=10.10.3.3:9092,KAFKA_USER_EVENTS_TOPIC=user-events" \
             --set-secrets="\
               DATABASE_URL=DATABASE_URL:latest,\
               DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,\

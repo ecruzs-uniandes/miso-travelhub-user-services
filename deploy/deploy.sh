@@ -25,11 +25,13 @@ if [ "$ENVIRONMENT" = "dev" ]; then
     VPC_CONNECTOR="travelhub-connector"
     ENV_NAME="development"
     DEBUG="true"
+    KAFKA_BOOTSTRAP_SERVERS="10.10.3.3:9092"
 else
     PROJECT_ID="travelhub-prod-492116"
     VPC_CONNECTOR="prod-travelhub-connector"
     ENV_NAME="production"
     DEBUG="false"
+    KAFKA_BOOTSTRAP_SERVERS="10.20.3.3:9092"
 fi
 
 REGION="${GCP_REGION:-us-central1}"
@@ -109,7 +111,7 @@ gcloud run deploy "$SERVICE_NAME" \
     --cpu=1 \
     --min-instances=0 \
     --max-instances=10 \
-    --set-env-vars="ENVIRONMENT=${ENV_NAME},DEBUG=${DEBUG},JWT_ALGORITHM=RS256,JWT_ISSUER=https://auth.travelhub.app,JWT_AUDIENCE=travelhub-api,JWT_ACCESS_TTL=900,JWT_REFRESH_TTL=604800,RATE_LIMIT_REQUESTS=100,RATE_LIMIT_WINDOW_SECONDS=60" \
+    --set-env-vars="ENVIRONMENT=${ENV_NAME},DEBUG=${DEBUG},JWT_ALGORITHM=RS256,JWT_ISSUER=https://auth.travelhub.app,JWT_AUDIENCE=travelhub-api,JWT_ACCESS_TTL=900,JWT_REFRESH_TTL=604800,RATE_LIMIT_REQUESTS=100,RATE_LIMIT_WINDOW_SECONDS=60,KAFKA_ENABLED=true,KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS},KAFKA_USER_EVENTS_TOPIC=user-events" \
     --set-secrets="DATABASE_URL=DATABASE_URL:latest,DATABASE_URL_SYNC=DATABASE_URL_SYNC:latest,RSA_PRIVATE_KEY_B64=RSA_PRIVATE_KEY_B64:latest" \
     --quiet
 
